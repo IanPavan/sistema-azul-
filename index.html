@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador de Portabilidade INSS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (typeof pdfjsLib !== 'undefined') {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
+</script>
+
+<style>
+  :root{
+    --bg:#F4F5F2;
+    --surface:#FFFFFF;
+    --surface-2:#EDEFEA;
+    --ink:#182420;
+    --ink-soft:#5B6660;
+    --ink-faint:#8B948E;
+    --accent:#0E6B5C;
+    --accent-dark:#0A4F44;
+    --accent-soft:#E1EFEA;
+    --warn:#8A5A16;
+    --warn-bg:#FBF0DD;
+    --danger:#93281F;
+    --danger-bg:#FAE7E4;
+    --border:#DBDFD8;
+    --border-strong:#B9C0B7;
+    --radius:10px;
+    --serif: Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --mono: "SF Mono", "Consolas", "Menlo", monospace;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:var(--sans);
+    font-size:15px;
+    line-height:1.5;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:var(--serif); font-weight:600; color:var(--ink); margin:0 0 6px;}
+  h1{font-size:26px; letter-spacing:-0.01em;}
+  h2{font-size:19px;}
+  h3{font-size:15px; font-family:var(--sans); font-weight:600;}
+  p{margin:0 0 10px; color:var(--ink-soft);}
+  a{color:var(--accent-dark);}
+  button{font-family:var(--sans); cursor:pointer;}
+  table{border-collapse:collapse; width:100%;}
+
+  #app{max-width:1180px; margin:0 auto; padding:28px 24px 80px;}
+
+  .app-header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    border-bottom:1px solid var(--border-strong); padding-bottom:16px; margin-bottom:22px;
+  }
+  .app-header .tag{
+    font-size:11.5px; color:var(--ink-faint); letter-spacing:.02em;
+  }
+
+  /* Stepper */
+  .stepper{
+    display:flex; gap:0; margin-bottom:28px; border:1px solid var(--border);
+    border-radius:var(--radius); overflow:hidden; background:var(--surface);
+  }
+  .step{
+    flex:1; padding:11px 14px; font-size:12.5px; color:var(--ink-faint);
+    border-right:1px solid var(--border); position:relative;
+    display:flex; align-items:center; gap:8px;
+  }
+  .step:last-child{border-right:none;}
+  .step .n{
+    width:18px; height:18px; border-radius:50%; border:1px solid var(--border-strong);
+    display:flex; align-items:center; justify-content:center; font-size:10.5px; flex-shrink:0;
+    color:var(--ink-faint);
+  }
+  .step.active{color:var(--ink); background:var(--accent-soft);}
+  .step.active .n{background:var(--accent); border-color:var(--accent); color:#fff;}
+  .step.done{color:var(--ink-soft);}
+  .step.done .n{background:var(--ink); border-color:var(--ink); color:#fff;}
+
+  .screen{display:none;}
+  .screen.visible{display:block; animation:fadein .25s ease;}
+  @keyframes fadein{from{opacity:0; transform:translateY(4px);} to{opacity:1; transform:translateY(0);}}
+
+  .card{
+    background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+    padding:22px 24px; margin-bottom:18px;
+  }
+  .card-tight{padding:16px 18px;}
+
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  .grid-3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:16px;}
+  @media (max-width:720px){.grid-2,.grid-3{grid-template-columns:1fr;}}
+
+  label{display:block; font-size:12.5px; color:var(--ink-soft); margin-bottom:5px; font-weight:600;}
+  input[type=text],input[type=number],input[type=date],select{
+    width:100%; padding:9px 10px; border:1px solid var(--border-strong); border-radius:7px;
+    font-size:14px; font-family:var(--sans); background:#fff; color:var(--ink);
+  }
+  input:focus,select:focus{outline:2px solid var(--accent); outline-offset:1px;}
+  .field{margin-bottom:14px;}
+  .hint{font-size:12px; color:var(--ink-faint); margin-top:4px;}
+
+  .btn{
+    display:inline-flex; align-items:center; gap:8px;
+    padding:10px 18px; border-radius:8px; border:1px solid var(--accent);
+    background:var(--accent); color:#fff; font-size:14px; font-weight:600;
+  }
+  .btn:hover{background:var(--accent-dark); border-color:var(--accent-dark);}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+  .btn-secondary{background:transparent; color:var(--ink); border-color:var(--border-strong);}
+  .btn-secondary:hover{background:var(--surface-2); border-color:var(--border-strong);}
+  .btn-row{display:flex; gap:10px; margin-top:18px;}
+
+  .upload-zone{
+    border:1.5px dashed var(--border-strong); border-radius:var(--radius);
+    padding:36px 20px; text-align:center; background:var(--surface-2);
+    cursor:pointer; transition:border-color .15s;
+  }
+  .upload-zone:hover{border-color:var(--accent);}
+  .upload-zone.has-file{border-style:solid; border-color:var(--accent);}
+
+  .banner{
+    border-radius:8px; padding:12px 14px; margin-bottom:12px; font-size:13.5px;
+    display:flex; gap:10px; align-items:flex-start;
+  }
+  .banner-warn{background:var(--warn-bg); color:var(--warn); border:1px solid #E9CE9C;}
+  .banner-danger{background:var(--danger-bg); color:var(--danger); border:1px solid #E9B9B2;}
+  .banner-info{background:var(--accent-soft); color:var(--accent-dark); border:1px solid #BFDDD3;}
+  .banner b{font-weight:700;}
+
+  .kpi{background:var(--surface-2); border-radius:8px; padding:12px 14px;}
+  .kpi .v{font-family:var(--serif); font-size:20px; color:var(--ink);}
+  .kpi .l{font-size:11.5px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:.03em;}
+
+  table.data th{
+    text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.02em;
+    color:var(--ink-faint); border-bottom:1px solid var(--border-strong); padding:8px 10px; font-weight:600;
+  }
+  table.data td{
+    padding:9px 10px; border-bottom:1px solid var(--border); font-size:13.5px;
+  }
+  table.data tr:last-child td{border-bottom:none;}
+  table.data td input, table.data td select{padding:6px 7px; font-size:13px;}
+
+  .pill{display:inline-block; padding:2px 9px; border-radius:99px; font-size:11.5px; font-weight:600;}
+  .pill-ok{background:var(--accent-soft); color:var(--accent-dark);}
+  .pill-warn{background:var(--warn-bg); color:var(--warn);}
+  .pill-off{background:var(--danger-bg); color:var(--danger);}
+
+  .flow-choice{
+    display:grid; grid-template-columns:1fr 1fr 1fr; gap:14px;
+  }
+  @media (max-width:820px){.flow-choice{grid-template-columns:1fr;}}
+  .flow-card{
+    border:1.5px solid var(--border); border-radius:var(--radius); padding:18px; background:var(--surface);
+    text-align:left; cursor:pointer;
+  }
+  .flow-card:hover{border-color:var(--accent);}
+  .flow-card h3{margin-bottom:6px;}
+  .flow-card p{font-size:13px; margin-bottom:0;}
+
+  .bank-block{
+    border:1px solid var(--border); border-radius:var(--radius); margin-bottom:14px; overflow:hidden;
+  }
+  .bank-block .bank-head{
+    display:flex; justify-content:space-between; align-items:center;
+    padding:12px 16px; background:var(--surface-2); border-bottom:1px solid var(--border);
+  }
+  .bank-block .bank-body{padding:14px 16px;}
+  .bank-block.unavailable .bank-head{background:var(--danger-bg);}
+  .bank-block.unavailable{opacity:.85;}
+
+  .muted{color:var(--ink-faint); font-size:12.5px;}
+  .right{text-align:right;}
+  .center{text-align:center;}
+  .mono{font-family:var(--mono);}
+  .spinner{
+    width:26px; height:26px; border-radius:50%; border:3px solid var(--border);
+    border-top-color:var(--accent); animation:spin .8s linear infinite; margin:0 auto 14px;
+  }
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  .loading-wrap{text-align:center; padding:60px 20px;}
+  .loading-wrap p{color:var(--ink-soft); font-size:14px;}
+
+  .contract-tag{font-size:11px; color:var(--ink-faint); font-family:var(--mono);}
+
+  ::selection{background:var(--accent-soft);}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="app-header">
+    <div>
+      <h1>Simulador de Portabilidade INSS</h1>
+    </div>
+    <div class="tag">Motor de cálculo determinístico &middot; dados conforme extrato do INSS</div>
+  </div>
+
+  <div class="stepper" id="stepper"></div>
+
+  <!-- SCREEN 1: UPLOAD -->
+  <div class="screen" id="screen-upload">
+    <div class="card">
+      <h2>1. Envie o extrato do INSS e informe a idade</h2>
+      <p>O sistema lê automaticamente o PDF de histórico de empréstimo consignado e extrai os dados do benefício, da margem e dos contratos ativos. O único dado que o extrato não traz é a idade do cliente — por isso ela é digitada manualmente aqui.</p>
+
+      <div class="grid-2" style="margin-top:18px; align-items:start;">
+        <div>
+          <label>Extrato do INSS (PDF)</label>
+          <div class="upload-zone" id="uploadZone">
+            <div id="uploadZoneText">
+              <strong>Clique para selecionar o PDF</strong>
+              <div class="hint">ou arraste o arquivo até aqui</div>
+            </div>
+          </div>
+          <input type="file" id="fileInput" accept="application/pdf" style="display:none;">
+        </div>
+        <div>
+          <div class="field">
+            <label>Idade do cliente (hoje)</label>
+            <input type="number" id="idadeCliente" min="18" max="100" placeholder="Ex.: 62">
+            <div class="hint">Único campo de preenchimento manual. Usado para calcular o prazo máximo permitido em cada banco.</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="uploadError"></div>
+
+      <div class="btn-row">
+        <button class="btn" id="btnExtrair" disabled>Extrair dados do PDF</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SCREEN 2: LOADING -->
+  <div class="screen" id="screen-loading">
+    <div class="card loading-wrap">
+      <div class="spinner"></div>
+      <p id="loadingText">Lendo o extrato e extraindo os dados&hellip;</p>
+    </div>
+  </div>
+
+  <!-- SCREEN 3: CONFERENCIA -->
+  <div class="screen" id="screen-conferencia">
+    <div id="conferenciaAlerts"></div>
+    <div class="card">
+      <h2>2. Confira os dados extraídos</h2>
+      <p>Revise e edite antes de simular. Estes dados alimentam os três fluxos de simulação.</p>
+      <div id="conferenciaBeneficiario"></div>
+    </div>
+    <div class="card">
+      <h3>Margem (por modalidade)</h3>
+      <div id="conferenciaMargem"></div>
+    </div>
+    <div class="card">
+      <h3>Contratos ativos e suspensos</h3>
+      <div id="conferenciaContratos"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary btn" id="btnVoltarUpload">&larr; Voltar</button>
+      <button class="btn" id="btnConfirmarDados">Confirmar dados e escolher fluxo &rarr;</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 4: ESCOLHA DO FLUXO -->
+  <div class="screen" id="screen-fluxo">
+    <div class="card">
+      <h2>3. Escolha o fluxo de simulação</h2>
+      <div class="flow-choice">
+        <div class="flow-card" data-flow="margemLivre">
+          <h3>Margem livre</h3>
+          <p>Usa a margem disponível informada no extrato para liberar um novo crédito, sem envolver os contratos ativos.</p>
+        </div>
+        <div class="flow-card" data-flow="portabilidadePura">
+          <h3>Portabilidade pura</h3>
+          <p>Migra o saldo devedor de cada contrato ativo para o banco de destino, buscando taxa e parcela melhores.</p>
+        </div>
+        <div class="flow-card" data-flow="portabilidadeRefin">
+          <h3>Portabilidade + Refinanciamento</h3>
+          <p>Porta o saldo devedor e libera um troco adicional no mesmo banco de destino.</p>
+        </div>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary btn" id="btnVoltarConferencia">&larr; Voltar</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 5: RESULTADO DO FLUXO -->
+  <div class="screen" id="screen-resultado">
+    <div class="card card-tight" style="display:flex; justify-content:space-between; align-items:center;">
+      <h2 id="resultadoTitulo" style="margin:0;"></h2>
+      <button class="btn-secondary btn" id="btnVoltarFluxo">&larr; Trocar fluxo</button>
+    </div>
+    <div id="resultadoConteudo"></div>
+    <div class="btn-row">
+      <button class="btn" id="btnVerComparativo">Ver comparativo entre todos os bancos &rarr;</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 6: COMPARATIVO -->
+  <div class="screen" id="screen-comparativo">
+    <div class="card">
+      <h2>4. Comparativo entre bancos</h2>
+      <p>Resultado consolidado dos três fluxos, lado a lado, para os bancos parametrizados.</p>
+      <div id="comparativoConteudo"></div>
+    </div>
+    <div class="btn-row">
+      <button class="btn-secondary btn" id="btnVoltarResultado">&larr; Voltar ao fluxo</button>
+      <button class="btn-secondary btn" id="btnReiniciar">Novo cliente / novo extrato</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+/* ======================= ESTADO GLOBAL ======================= */
+const STATE = {
+  step: 1,
+  pdfBase64: null,
+  pdfMediaType: 'application/pdf',
+  idadeCliente: null,
+  dadosExtraidos: null, // formato padronizado do DataProvider
+  fluxoAtual: null,
+  hoje: new Date()
+};
+
+const STEP_LABELS = ['Upload', 'Conferência', 'Fluxo', 'Simulação', 'Comparativo'];
+
+/* ======================= CONSTANTE DE MARGEM (conferência/projeção) =======================
+   Nunca sobrepõe o valor de margem já impresso no extrato do INSS (fonte da verdade).
+   Serve apenas para conferir o extrato e projetar cenários se a base de cálculo mudar. */
+const REGRAS_MARGEM_INSS = {
+  percentualEmprestimoPadrao: 0.45,   // demais espécies (Lei 15.182/2025, vigente após queda da MP 1.355/2026)
+  percentualEmprestimoEspecies_18_87_88: 0.30,
+  percentualCartaoEspecies_18_87_88: 0.05,     // RMC ou RCC, à escolha, não os dois
+  percentualCartaoPadrao: 0.10,                // 5% RMC + 5% RCC nas demais espécies
+  vigenciaDesde: "2026-09-01",
+  fonte: "Lei nº 15.182/2025 (MP 1.355/2026 perdeu validade em 31/08/2026 sem conversão)",
+  observacao: "Há decisão cautelar do TCU que ainda pode impedir a liberação da fatia de cartão em alguns cenários. Sujeito a mudança."
+};
+
+/* ======================= PARAMETRIZAÇÃO POR BANCO ======================= */
+const bancosConfig = {
+  ACREDTO: {
+    nome: "Acredto",
+    idadeMaxima: [ { ateIdade: 69, prazoMax: 108 } ],
+    taxaMinPortRefin: 0.60,
+    taxaMinPortPura: "1,74% (saldo até R$6.000)",
+    parcelaMinima: null,
+    saldoMinDevedor: 3000, // saldo + troco
+    trocoMinimo: "5% da dívida agregada",
+    agregaMargem: false,
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: ["QI Tech", "Pine", "Inbursa", "Paraná Banco"],
+    acordoBanco: { C6: 12, Facta: 12, PAN: 12 }
+  },
+  ICRED: {
+    nome: "ICred",
+    idadeMaxima: [ { ateIdade: 69, prazoMax: 108 } ],
+    taxaMinPortRefin: "simular no banco",
+    taxaMinPortPura: "não faz",
+    parcelaMinima: null,
+    saldoMinDevedor: 3000,
+    trocoMinimo: 100,
+    agregaMargem: false,
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: ["Inbursa", "QI Tech", "Pine", "Paraná Banco"],
+    acordoBanco: { "Facta (cód. 149)": 12, C6: 12 }
+  },
+  C6: {
+    nome: "C6 Bank",
+    idadeMaxima: [ { ateIdade: 73, prazoMax: 108 } ],
+    taxaMinPortRefin: 1.35,
+    taxaMinPortPura: 1.75,
+    parcelaMinima: null,
+    saldoMinDevedor: 2000,
+    trocoMinimo: 50,
+    agregaMargem: true,
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: ["Daycoval", "Agibank", "Inbursa", "BRB", "Safra"],
+    acordoBanco: { PAN: 37, "Paraná (tab ESP)": 25, "QI Tech": 329, "Facta": "935/149", "Pine": 643 }
+  },
+  FINANTO: {
+    nome: "Finanto",
+    idadeMaxima: [ { ateIdade: 68, prazoMax: 108 }, { ateIdade: 69, prazoMax: 96 } ],
+    taxaMinPortRefin: 0.80,
+    taxaMinPortPura: "Prime >300: 1,66% / Select 101–299 / Essencial 50–100",
+    parcelaMinima: 8000, // referência "Prime"
+    saldoMinDevedor: null,
+    trocoMinimo: "5% do novo endividamento",
+    agregaMargem: true,
+    abateNegativo: true,
+    unificaNoRefin: true,
+    naoPorta: ["Safra", "C6 (336/626)", "Facta", "Finanto", "Inbursa", "Alfa", "Pine", "QI Tech", "PicPay", "BNP Paribas", "Paraná Banco"],
+    acordoBanco: { PAN: 12, Santander: 12, Mercantil: 12, Agibank: 12, Daycoval: 12, Parati: 12, C6: 12 }
+  },
+  DAYCOVAL: {
+    nome: "Daycoval",
+    idadeMaxima: [ { ateIdade: 71, prazoMax: 108 }, { ateIdade: 72, prazoMax: 96 }, { ateIdade: 73, prazoMax: 84 } ],
+    taxaMinPortRefin: 1.34,
+    taxaMinPortPura: "não faz",
+    parcelaMinima: 20,
+    saldoMinDevedor: null,
+    trocoMinimo: 100,
+    agregaMargem: false,
+    abateNegativo: true,
+    unificaNoRefin: 3,
+    naoPorta: ["C6", "Safra", "Alfa", "Inbursa"],
+    acordoBanco: { Facta: 24, Agibank: 15, PAN: 12, Itaú: 12, BMG: 12, "QI/QUA": 12, BRB: 12 }
+  },
+  FACTA: {
+    nome: "Facta Financeira",
+    idadeMaxima: [ { ateIdade: 71, prazoMax: 108 }, { ateIdade: 72, prazoMax: 96 }, { ateIdade: 73, prazoMax: 84 }, { ateIdade: 74, prazoMax: 72 }, { ateIdade: 75, prazoMax: 60 } ],
+    taxaMinPortRefin: 0.80,
+    taxaMinPortPura: "1,70% (70 parc. abertas, saldo ≥ R$1.900)",
+    parcelaMinima: "refin > R$50 / port > R$50",
+    saldoMinDevedor: "refin+port > R$3.000 ou parcela > R$50",
+    trocoMinimo: 50,
+    agregaMargem: true,
+    abateNegativo: true,
+    unificaNoRefin: 6,
+    naoPorta: ["Inbursa", "Pine", "BRB", "Zema", "Socicred", "Paulista"],
+    acordoBanco: { Agibank: 15, BMG: 12, C6: 12, "Olé": 12, Daycoval: 24, PAN: 30, "Paraná": 15 }
+  },
+  BANRISUL: {
+    nome: "Banrisul",
+    idadeMaxima: [ { ateIdade: 68, prazoMax: 108 }, { ateIdade: 69, prazoMax: 96 } ],
+    taxaMinPortRefin: 1.40,
+    taxaMinPortPura: 1.70,
+    parcelaMinima: null,
+    saldoMinDevedor: 5000,
+    trocoMinimo: "até R$10 (para viabilizar o saldo)",
+    agregaMargem: true,
+    abateNegativo: true,
+    unificaNoRefin: "até 4/5",
+    naoPorta: ["Banrisul", "Bari", "BRB"],
+    acordoBanco: { PAN: 30, "Safra/Alfa/Inbursa": 12 }
+  },
+  BRB: {
+    nome: "BRB",
+    status: "INATIVO", // conforme tabela de 22/09/2026 — em regularização (previsão: próximas semanas)
+    mensagemInativo: "BRB temporariamente indisponível — em regularização."
+    // Assim que for reativado, substituir este bloco pelos dados reais de taxa/regras.
+  },
+  TOTAL_CASH: {
+    nome: "Total Cash",
+    idadeMaxima: [ { ateIdade: 69, prazoMax: 108 }, { ateIdade: 73, prazoMax: 60 } ],
+    taxaMinPortRefin: 0.90,
+    taxaMinPortPura: 1.70,
+    parcelaMinima: null,
+    saldoMinDevedor: 3000,
+    trocoMinimo: "2% da dívida agregada",
+    agregaMargem: false,
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: ["Pine", "Inbursa", "QI", "Paraná Banco"],
+    acordoBanco: { PAN: 12, Facta: 12, C6: 12 }
+  },
+  DIGIO: {
+    nome: "Digio",
+    idadeMaxima: [ { ateIdade: 68, prazoMax: 108 } ],
+    taxaMinPortRefin: 1.42,
+    taxaMinPortPura: null,
+    parcelaMinima: 70,
+    saldoMinDevedor: null,
+    trocoMinimo: 250,
+    agregaMargem: "só no refin",
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: ["Bradesco", "Banco do Brasil", "Banrisul"],
+    acordoBanco: {} // sem acordos comerciais
+  },
+  PARANA_BANCO: {
+    nome: "Paraná Banco",
+    idadeMaxima: [ { ateIdade: 68, prazoMax: 108 }, { ateIdade: 69, prazoMax: 96 } ],
+    taxaMinPortRefin: 1.00,
+    taxaMinPortPura: 1.70,
+    parcelaMinima: 120,
+    saldoMinDevedor: null,
+    trocoMinimo: null,
+    agregaMargem: false,
+    abateNegativo: true,
+    unificaNoRefin: false,
+    naoPorta: [],
+    acordoBanco: { Agibank: 13, Inbursa: 13, C6: 25 }
+  }
+};
+// BMG não entra no sistema por decisão do usuário.
+
+/* ======================= HELPERS NUMÉRICOS / FORMATAÇÃO ======================= */
+function brl(v){
+  if (v===null || v===undefined || isNaN(v)) return '—';
+  return v.toLocaleString('pt-BR', {style:'currency', currency:'BRL'});
+}
+function pct(v, casas){
+  if (v===null || v===undefined || isNaN(v)) return '—';
+  return v.toLocaleString('pt-BR', {minimumFractionDigits:casas||2, maximumFractionDigits:casas||2}) + '%';
+}
+function numOrNull(v){
+  if (v===null || v===undefined || v==='') return null;
+  const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g,'').replace(',','.'));
+  return isNaN(n) ? null : n;
+}
+function isNumericConfigValue(v){
+  return typeof v === 'number';
+}
+function parseDataBR(str){
+  // aceita "DD/MM/AAAA" ou "AAAA-MM-DD"
+  if (!str) return null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(str)) return new Date(str+'T00:00:00');
+  const m = String(str).match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  if (m) return new Date(parseInt(m[3]), parseInt(m[2])-1, parseInt(m[1]));
+  const d = new Date(str);
+  return isNaN(d.getTime()) ? null : d;
+}
+function mesesEntre(dataInicio, dataFim){
+  if (!dataInicio || !dataFim) return 0;
+  let meses = (dataFim.getFullYear() - dataInicio.getFullYear()) * 12 + (dataFim.getMonth() - dataInicio.getMonth());
+  if (dataFim.getDate() < dataInicio.getDate()) meses -= 1;
+  return meses;
+}
+
+/* ======================= MOTOR DE CÁLCULO: TABELA PRICE ======================= */
+// Valor presente (saldo devedor) dada a parcela, a taxa mensal (fração, ex 0.018) e nº de parcelas restantes
+function pricePV(parcela, iMensal, nRestantes){
+  if (nRestantes <= 0) return 0;
+  if (iMensal === 0) return parcela * nRestantes;
+  const fator = Math.pow(1+iMensal, nRestantes);
+  return parcela * (fator - 1) / (iMensal * fator);
+}
+// Valor da parcela dado um PV (principal), taxa mensal e prazo — usado para simular no banco de destino
+function pricePMT(pv, iMensal, n){
+  if (n <= 0) return 0;
+  if (iMensal === 0) return pv / n;
+  const fator = Math.pow(1+iMensal, n);
+  return pv * (iMensal * fator) / (fator - 1);
+}
+
+/* ======================= PRAZO MÁXIMO PELA IDADE ======================= */
+// Implementação conforme especificado: compara a idade ATUAL do cliente contra o limite de cada faixa
+// (ex.: "até 69 anos: 108x"). ATENÇÃO: se a fonte (bevi) na verdade quiser dizer "idade ao FINAL do
+// contrato", a fórmula muda para prazoMax = (limiteIdadeContratual - idadeCliente) * 12. Confirmar com
+// a fonte antes de usar em produção — deixado como está no documento original por padrão.
+function prazoMaximoPorIdade(idadeCliente, idadeMaximaBanco){
+  if (!idadeMaximaBanco || !idadeMaximaBanco.length) return null;
+  const faixas = [...idadeMaximaBanco].sort((a,b)=>a.ateIdade-b.ateIdade);
+  for (const faixa of faixas){
+    if (idadeCliente <= faixa.ateIdade) return faixa.prazoMax;
+  }
+  return null; // cliente não atende nenhuma faixa daquele banco
+}
+
+/* ======================= REGRAS DE MARGEM POR ESPÉCIE (conferência) ======================= */
+function margemEsperadaPorEspecie(especieStr, baseCalculo){
+  const especial = /\b(18|87|88)\b/.test(String(especieStr||''));
+  const pctEmp = especial ? REGRAS_MARGEM_INSS.percentualEmprestimoEspecies_18_87_88 : REGRAS_MARGEM_INSS.percentualEmprestimoPadrao;
+  const pctCartao = especial ? REGRAS_MARGEM_INSS.percentualCartaoEspecies_18_87_88 : REGRAS_MARGEM_INSS.percentualCartaoPadrao;
+  return {
+    margemEmprestimoEsperada: baseCalculo!=null ? baseCalculo*pctEmp : null,
+    margemCartaoEsperada: baseCalculo!=null ? baseCalculo*pctCartao : null,
+    percentualEmprestimo: pctEmp, percentualCartao: pctCartao, especial
+  };
+}
+
+/* ======================= CÁLCULO POR CONTRATO: PARCELAS PAGAS E SALDO DEVEDOR =======================
+   Usa a data de "PRIMEIRO DESCONTO" (dia exato) quando disponível — é mais precisa que a
+   "competência de início de desconto" (que no extrato do INSS vem só como mês/ano). */
+function calcularContrato(contrato, hoje){
+  const dataPrimeiroDesconto = parseDataBR(contrato.dataPrimeiroDesconto || contrato.dataInicioDesconto);
+  const total = contrato.qtdeParcelas || 0;
+  let parcelasPagas = dataPrimeiroDesconto ? mesesEntre(dataPrimeiroDesconto, hoje) : 0;
+  parcelasPagas = Math.max(0, Math.min(parcelasPagas, total));
+  const parcelasRestantes = Math.max(0, total - parcelasPagas);
+  const taxa = numOrNull(contrato.taxaJurosMensal);
+  const parcela = numOrNull(contrato.valorParcela);
+  let saldoDevedor = null;
+  if (taxa!=null && parcela!=null){
+    saldoDevedor = pricePV(parcela, taxa/100, parcelasRestantes);
+  }
+  return { ...contrato, parcelasPagas, parcelasRestantes, saldoDevedor };
+}
+
+
+/* ======================= REGRAS DE ELEGIBILIDADE (seção 2) ======================= */
+function avaliarElegibilidade(beneficiario){
+  const alerts = [];
+  let bloqueado = false;
+
+  if (beneficiario.possuiRepresentanteLegal){
+    bloqueado = true;
+    alerts.push({tipo:'danger', msg:'<b>Simulação bloqueada.</b> O benefício possui representante legal cadastrado — essa condição exige tratamento específico e não pode ser simulada automaticamente pelo sistema.'});
+  }
+  if (beneficiario.situacao && String(beneficiario.situacao).toUpperCase() !== 'ATIVO'){
+    alerts.push({tipo:'warn', msg:`<b>Atenção:</b> a situação do benefício consta como <b>${beneficiario.situacao}</b>. A simulação prossegue normalmente, mas confirme a situação real antes de operacionalizar.`});
+  }
+  if (beneficiario.liberadoParaEmprestimo === false){
+    alerts.push({tipo:'warn', msg:'<b>Atenção:</b> o extrato indica que o benefício <b>não está liberado</b> para empréstimo.'});
+  }
+  if (beneficiario.elegivelParaEmprestimos === false){
+    alerts.push({tipo:'warn', msg:'<b>Atenção:</b> o extrato indica que o benefício <b>não está elegível</b> para empréstimos.'});
+  }
+  if (beneficiario.possuiProcurador){
+    alerts.push({tipo:'info', msg:'O benefício possui procurador cadastrado — considere isso na formalização da operação.'});
+  }
+  if (beneficiario.pensaoAlimenticia){
+    alerts.push({tipo:'warn', msg:'<b>Atenção:</b> consta desconto de pensão alimentícia sobre o benefício, o que pode afetar a margem disponível real.'});
+  }
+  return { bloqueado, alerts };
+}
+
+/* ======================= DATA PROVIDER (abstração p/ futura API do bevi) =======================
+   Extração 100% local, sem IA e sem servidor: lê o texto do PDF com posições exatas (pdf.js) e
+   reconstrói a tabela e os campos usando as coordenadas fixas do modelo de extrato do INSS
+   (validado contra um extrato real). Não há chamada de rede, não há custo, não há chave de API.
+   Funciona enquanto o extrato mantiver o mesmo layout — se o INSS mudar o modelo do PDF, os
+   valores calibrados abaixo (COLS_ATIVOS, MARGIN_ABOVE_FIRST_ANCHOR) precisam ser reajustados. */
+
+// Colunas da tabela "CONTRATOS ATIVOS E SUSPENSOS" (coordenadas x em pontos do PDF, calibradas)
+const COLS_ATIVOS = [
+  ["contrato", 10, 40], ["banco", 40, 68], ["situacao", 68, 93],
+  ["origemAverbacao", 93, 123], ["dataInclusao", 123, 153],
+  ["inicioDesconto", 153, 188], ["fimDesconto", 188, 223],
+  ["qtdeParcelas", 223, 248], ["valorParcela", 248, 283],
+  ["valorEmprestado", 283, 333], ["valorLiberado", 333, 378],
+  ["iof", 378, 399], ["cetMensal", 399, 429], ["cetAnual", 429, 455],
+  ["taxaJurosMensal", 455, 485], ["taxaJurosAnual", 485, 511],
+  ["valorPago", 511, 541], ["primeiroDesconto", 541, 581],
+  ["suspensBanco", 581, 616], ["suspensInss", 616, 651],
+  ["reativBanco", 651, 686], ["reativInss", 686, 721],
+];
+const MARGIN_ABOVE_FIRST_ANCHOR = 20; // pts entre o fim do cabeçalho e a 1ª linha de dados
+
+function colForX(x, cols){
+  for (const [name, x0, x1] of cols) if (x >= x0-0.5 && x < x1+0.5) return name;
+  return null;
+}
+
+async function getPageWords(page){
+  const viewport = page.getViewport({ scale: 1 });
+  const content = await page.getTextContent();
+  const words = [];
+  for (const item of content.items){
+    if (!item.str || !item.str.trim()) continue;
+    const m = pdfjsLib.Util.transform(viewport.transform, item.transform);
+    const parts = item.str.split(/(\s+)/).filter(p => p.trim());
+    if (parts.length <= 1){ words.push({ text: item.str.trim(), x: m[4], top: m[5] }); continue; }
+    const totalLen = item.str.length; let charPos = 0;
+    for (const part of parts){
+      words.push({ text: part, x: m[4] + (charPos/totalLen)*(item.width||0), top: m[5] });
+      charPos += part.length;
+    }
+  }
+  return words;
+}
+function groupRows(words, tol=2.5){
+  const sorted = [...words].sort((a,b)=>a.top-b.top);
+  const rows = [];
+  for (const w of sorted){
+    let row = rows.find(r => Math.abs(r.top - w.top) <= tol);
+    if (!row){ row = { top: w.top, words: [] }; rows.push(row); }
+    row.words.push(w);
+  }
+  rows.forEach(r => r.words.sort((a,b)=>a.x-b.x));
+  return rows.sort((a,b)=>a.top-b.top);
+}
+function rowText(row, xMin=-1, xMax=99999){
+  return row.words.filter(w=>w.x>=xMin && w.x<xMax).map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
+}
+function parseMoneyBR(str){
+  if (!str) return null;
+  const m = String(str).match(/-?[\d.]+,\d{2}/);
+  if (!m) return null;
+  return parseFloat(m[0].replace(/\./g,'').replace(',','.'));
+}
+function parsePctBR(str){
+  if (!str) return null;
+  const m = String(str).match(/-?\d+,\d+/);
+  if (!m) return null;
+  return parseFloat(m[0].replace(',','.'));
+}
+function normalizarData2Digitos(str){
+  // "14/09/26" -> "14/09/2026"
+  if (!str) return null;
+  const m = String(str).match(/(\d{2})\/(\d{2})\/(\d{2,4})/);
+  if (!m) return null;
+  let ano = m[3];
+  if (ano.length === 2) ano = '20' + ano;
+  return `${m[1]}/${m[2]}/${ano}`;
+}
+
+/* -------- Página 1: Beneficiário -------- */
+function parsePaginaBeneficiario(words){
+  const rows = groupRows(words);
+  const b = {
+    nome: null, numeroBeneficio: null, especie: null, situacao: null,
+    possuiRepresentanteLegal: false, possuiProcurador: false, pensaoAlimenticia: false,
+    liberadoParaEmprestimo: true, elegivelParaEmprestimos: true,
+    bancoPagamento: null, agencia: null, conta: null
+  };
+  const idxBenef = rows.findIndex(r => rowText(r) === 'Benefício');
+  const idxNumBenef = rows.findIndex(r => /^N[ºo°]\s*Benef[íi]cio:/i.test(rowText(r,-1,400)));
+
+  if (idxBenef > 0) b.nome = rowText(rows[idxBenef-1]).trim() || null;
+  if (idxBenef >= 0 && idxNumBenef > idxBenef){
+    const especieRows = [];
+    for (let i=idxBenef+1;i<idxNumBenef;i++){ const t = rowText(rows[i]); if (t) especieRows.push(t); }
+    if (especieRows.length) b.especie = especieRows.join(' ').trim();
+  }
+
+  for (const r of rows){
+    const left = rowText(r, -1, 400), right = rowText(r, 400, 99999);
+    if (/^N[ºo°]\s*Benef[íi]cio:/i.test(left)) b.numeroBeneficio = left.replace(/^N[ºo°]\s*Benef[íi]cio:\s*/i,'').trim() || null;
+    if (/^Situa[cç][ãa]o:/i.test(left)) b.situacao = left.replace(/^Situa[cç][ãa]o:\s*/i,'').trim() || null;
+    if (/^Pago em:/i.test(left)) b.bancoPagamento = left.replace(/^Pago em:\s*/i,'').trim() || null;
+    if (/^Ag[êe]ncia:/i.test(left)) b.agencia = left.replace(/^Ag[êe]ncia:\s*/i,'').trim() || null;
+    if (/^Conta Corrente:/i.test(left)) b.conta = left.replace(/^Conta Corrente:\s*/i,'').trim() || null;
+
+    if (/procurador/i.test(right)) b.possuiProcurador = !/^N[ãa]o\b/i.test(right);
+    if (/representante legal/i.test(right)) b.possuiRepresentanteLegal = !/^N[ãa]o\b/i.test(right);
+    if (/pens[ãa]o aliment/i.test(right)) b.pensaoAlimenticia = !/^N[ãa]o\b/i.test(right);
+    if (/liberado para empr[ée]stimo/i.test(right)) b.liberadoParaEmprestimo = !/^N[ãa]o\b/i.test(right);
+    if (/eleg[íi]vel para empr[ée]stimos/i.test(right)) b.elegivelParaEmprestimos = !/^N[ãa]o\b/i.test(right);
+  }
+  return b;
+}
+
+/* -------- Página 2: Margem -------- */
+function parsePaginaMargem(words){
+  const rows = groupRows(words);
+  const m = { baseCalculo:null, maximoComprometimento:null, totalComprometido:null, margemExtrapolada:null,
+    porModalidade: { emprestimos:{}, rmc:{}, rcc:{} } };
+
+  const findRow = (re) => rows.find(r => re.test(rowText(r)));
+  const rBase = findRow(/BASE DE C[ÁA]LCULO/i);
+  const rMax = findRow(/M[ÁA]XIMO DE COMPROMETIMENTO/i);
+  const rTotal = findRow(/^TOTAL COMPROMETIDO/i);
+  const rExtrapGeral = findRow(/MARGEM EXTRAPOLADA/i);
+  if (rBase) m.baseCalculo = parseMoneyBR(rowText(rBase));
+  if (rMax) m.maximoComprometimento = parseMoneyBR(rowText(rMax));
+  if (rTotal) m.totalComprometido = parseMoneyBR(rowText(rTotal));
+  if (rExtrapGeral) m.margemExtrapolada = parseMoneyBR(rowText(rExtrapGeral));
+
+  const rModalHeading = findRow(/VALORES POR MODALIDADE/i);
+  const modalRows = rModalHeading ? rows.filter(r => r.top > rModalHeading.top) : rows;
+  const tresValores = (row) => {
+    if (!row) return [null,null,null];
+    const text = rowText(row);
+    const matches = [...text.matchAll(/-?[\d.]+,\d{2}|(?<![\w$])-(?![\w,])/g)].map(x=>x[0]);
+    const parse = (v) => (v===undefined || v==='-') ? null : parseFloat(v.replace(/\./g,'').replace(',','.'));
+    return [parse(matches[0]), parse(matches[1]), parse(matches[2])];
+  };
+  const setModal = (row, campo) => {
+    const [emp,rmc,rcc] = tresValores(row);
+    m.porModalidade.emprestimos[campo] = emp;
+    m.porModalidade.rmc[campo] = rmc;
+    m.porModalidade.rcc[campo] = rcc;
+  };
+  setModal(modalRows.find(r=>/MARGEM CONSIGN[ÁA]VEL/i.test(rowText(r))), 'margemConsignavel');
+  setModal(modalRows.find(r=>/MARGEM UTILIZADA/i.test(rowText(r))), 'margemUtilizada');
+  setModal(modalRows.find(r=>/MARGEM RESERVADA/i.test(rowText(r))), 'margemReservada');
+  setModal(modalRows.find(r=>/MARGEM DISPON[ÍI]VEL/i.test(rowText(r))), 'margemDisponivel');
+  setModal(modalRows.find(r=>/MARGEM EXTRAPOLADA/i.test(rowText(r))), 'margemExtrapolada');
+  return m;
+}
+
+/* -------- Páginas 3+: Contratos ativos e suspensos --------
+   Algoritmo: usa a coluna SITUAÇÃO ("Ativo"/"Suspenso") como âncora de cada linha, já que é a
+   única célula de uma palavra só (nunca quebra quebra em várias linhas); a partir das âncoras,
+   calcula a faixa vertical de cada linha da tabela e distribui as demais palavras pelas colunas
+   usando a posição x. Ignora completamente a tabela "CONTRATOS EXCLUÍDOS E ENCERRADOS". */
+async function extrairContratosAtivos(pdfDoc){
+  const contratos = [];
+  let emSecao = false;
+
+  for (let pageNum = 1; pageNum <= pdfDoc.numPages; pageNum++){
+    const page = await pdfDoc.getPage(pageNum);
+    const words = await getPageWords(page);
+    const textoPagina = words.map(w=>w.text).join(' ');
+    const temAtivos = /CONTRATOS\s+ATIVOS\s+E\s+SUSPENSOS/i.test(textoPagina);
+    const temExcluidos = /CONTRATOS\s+EXCLU[ÍI]DOS\s+E\s+ENCERRADOS/i.test(textoPagina);
+    const primeiraPaginaDaSecao = !emSecao && temAtivos;
+    if (!emSecao && temAtivos) emSecao = true;
+    if (!emSecao) continue;
+
+    let pageWords = words;
+    if (temExcluidos){
+      const posExcl = words.find(w => /EXCLU[ÍI]DOS/i.test(w.text));
+      if (posExcl) pageWords = words.filter(w => w.top < posExcl.top - 5);
+    }
+
+    const anchors = pageWords.filter(w => colForX(w.x, COLS_ATIVOS)==='situacao' && /^(Ativo|Suspenso)$/i.test(w.text));
+    anchors.sort((a,b)=>a.top-b.top);
+
+    if (anchors.length){
+      const tops = anchors.map(a=>a.top);
+      const gaps = []; for (let i=1;i<tops.length;i++) gaps.push(tops[i]-tops[i-1]);
+      gaps.sort((a,b)=>a-b);
+      const medianGap = gaps.length ? gaps[Math.floor(gaps.length/2)] : 50;
+
+      const bounds = tops.map((t,i) => [
+        i===0 ? (primeiraPaginaDaSecao ? t - MARGIN_ABOVE_FIRST_ANCHOR : t - medianGap/2) : (tops[i-1]+t)/2,
+        i===tops.length-1 ? t + medianGap/2 : (t+tops[i+1])/2
+      ]);
+
+      for (const [y0,y1] of bounds){
+        const rowWords = pageWords.filter(w => w.top>=y0 && w.top<y1);
+        const cell = {};
+        for (const w of rowWords){ const c = colForX(w.x, COLS_ATIVOS); if(!c) continue; (cell[c]=cell[c]||[]).push(w); }
+        for (const c in cell) cell[c].sort((a,b)=>a.top-b.top);
+        const j = (c,sep='') => (cell[c]||[]).map(w=>w.text).join(sep);
+        contratos.push({
+          contrato: j('contrato'),
+          banco: j('banco',' ').replace(/\s+/g,' ').trim(),
+          situacao: j('situacao'),
+          origemAverbacao: j('origemAverbacao',' ').replace(/\s+/g,' ').trim(),
+          dataInclusao: normalizarData2Digitos(j('dataInclusao')),
+          dataInicioDesconto: j('inicioDesconto') || null, // competência MM/AAAA
+          dataFimDesconto: j('fimDesconto') || null,       // competência MM/AAAA
+          qtdeParcelas: parseInt(j('qtdeParcelas'))||0,
+          valorParcela: parseMoneyBR(j('valorParcela')),
+          valorEmprestado: parseMoneyBR(j('valorEmprestado')),
+          valorLiberado: parseMoneyBR(j('valorLiberado')),
+          iof: parseMoneyBR(j('iof')),
+          cetMensal: parsePctBR(j('cetMensal')),
+          cetAnual: parsePctBR(j('cetAnual')),
+          taxaJurosMensal: parsePctBR(j('taxaJurosMensal')),
+          taxaJurosAnual: parsePctBR(j('taxaJurosAnual')),
+          valorPago: parseMoneyBR(j('valorPago')),
+          dataPrimeiroDesconto: normalizarData2Digitos(j('primeiroDesconto')) // data exata (dia/mês/ano)
+        });
+      }
+    }
+    if (temExcluidos) break; // não olhar páginas seguintes: só há excluídos daqui em diante
+  }
+  return contratos;
+}
+
+const DataProvider = {
+  async extrairDoPDF(base64, mediaType){
+    if (typeof pdfjsLib === 'undefined'){
+      throw new Error('Biblioteca de leitura de PDF não carregou. Verifique sua conexão e recarregue a página.');
+    }
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i=0;i<binary.length;i++) bytes[i] = binary.charCodeAt(i);
+
+    let pdfDoc;
+    try {
+      pdfDoc = await pdfjsLib.getDocument({ data: bytes }).promise;
+    } catch(e){
+      throw new Error('Não foi possível abrir o PDF. Verifique se o arquivo não está corrompido.');
+    }
+
+    const page1Words = await getPageWords(await pdfDoc.getPage(1));
+    const beneficiario = parsePaginaBeneficiario(page1Words);
+
+    let margem = { baseCalculo:null, maximoComprometimento:null, totalComprometido:null, margemExtrapolada:null, porModalidade:{emprestimos:{},rmc:{},rcc:{}} };
+    if (pdfDoc.numPages >= 2){
+      const page2Words = await getPageWords(await pdfDoc.getPage(2));
+      margem = parsePaginaMargem(page2Words);
+    }
+
+    const contratosAtivos = await extrairContratosAtivos(pdfDoc);
+
+    if (!beneficiario.nome && !contratosAtivos.length){
+      throw new Error('Não foi possível reconhecer este PDF como um extrato de histórico de empréstimo consignado do INSS. Confira os dados manualmente na próxima tela.');
+    }
+
+    return { beneficiario, margem, contratosAtivos };
+  },
+
+  async extrairDaAPIBevi(credenciais){
+    throw new Error('Integração com a API do bevi ainda não implementada. Use a extração por PDF por enquanto.');
+  }
+};
+
+
+/* ======================= HELPERS DE CONFIGURAÇÃO EM TEXTO LIVRE ======================= */
+// Extrai o primeiro número de uma string tipo "1,74% (saldo até R$6.000)" -> 1.74
+function taxaNumerica(valor){
+  if (typeof valor === 'number') return valor;
+  if (typeof valor === 'string'){
+    const m = valor.match(/-?\d+[.,]?\d*/);
+    if (m) return parseFloat(m[0].replace(',','.'));
+  }
+  return null;
+}
+function ehNaoFaz(valor){
+  return typeof valor === 'string' && /não faz/i.test(valor);
+}
+// Resolve um valor mínimo (troco ou parcela) que pode ser number, "% da dívida/novo endividamento",
+// texto livre, ou null (sem mínimo definido).
+function resolverMinimo(valor, baseReferencia){
+  if (valor === null || valor === undefined) return { valor: null, textoOriginal: null };
+  if (typeof valor === 'number') return { valor, textoOriginal: null };
+  const mPct = String(valor).match(/(\d+[.,]?\d*)\s*%/);
+  if (mPct){
+    const p = parseFloat(mPct[1].replace(',','.')) / 100;
+    return { valor: (baseReferencia||0) * p, textoOriginal: valor };
+  }
+  const mNum = String(valor).match(/\d+[.,]?\d*/);
+  if (mNum) return { valor: parseFloat(mNum[0].replace(',','.')), textoOriginal: valor };
+  return { valor: null, textoOriginal: valor }; // texto não numérico — não dá para checar automaticamente
+}
+// Verifica se o nome do banco de origem do contrato "casa" com uma entrada de naoPorta/acordoBanco
+function bancoCasa(nomeContrato, chaveConfig){
+  if (!nomeContrato || !chaveConfig) return false;
+  // remove espaços antes de comparar: o extrato às vezes quebra nomes de banco no meio da
+  // palavra (ex.: "INBURS A" em vez de "INBURSA") por causa da quebra de linha na célula do PDF
+  const norm = (s) => String(s).toLowerCase().replace(/\(.*?\)/g,'').replace(/\s+/g,'');
+  const a = norm(nomeContrato);
+  const b = norm(chaveConfig);
+  return a.includes(b) || b.includes(a);
+}
+function encontrarAcordo(cfgAcordoBanco, nomeContrato){
+  for (const chave of Object.keys(cfgAcordoBanco||{})){
+    if (bancoCasa(nomeContrato, chave)) return { chave, valor: cfgAcordoBanco[chave] };
+  }
+  return null;
+}
+function encontrarNaoPorta(cfgNaoPorta, nomeContrato){
+  for (const item of (cfgNaoPorta||[])){
+    if (bancoCasa(nomeContrato, item)) return item;
+  }
+  return null;
+}
+
+/* ======================= MOTOR DE SIMULAÇÃO: DISPONIBILIDADE DO BANCO ======================= */
+// flow: 'margemLivre' | 'portabilidadePura' | 'portabilidadeRefin'
+function avaliarBanco(bancoKey, cfg, flow, ctx){
+  const idadeCliente = ctx.idadeCliente;
+  const contrato = ctx.contrato; // presente apenas em portabilidadePura/Refin
+
+  if (cfg.status === 'INATIVO'){
+    return { disponivel:false, motivo: cfg.mensagemInativo || `${cfg.nome} está temporariamente indisponível.` };
+  }
+
+  const prazo = prazoMaximoPorIdade(idadeCliente, cfg.idadeMaxima);
+  if (prazo === null){
+    return { disponivel:false, motivo: `${cfg.nome} não atende clientes com a idade informada (${idadeCliente} anos).` };
+  }
+
+  if (flow === 'portabilidadePura' || flow === 'portabilidadeRefin'){
+    const taxaConfig = flow === 'portabilidadePura' ? cfg.taxaMinPortPura : cfg.taxaMinPortRefin;
+    if (ehNaoFaz(taxaConfig)){
+      return { disponivel:false, motivo: `${cfg.nome} não realiza ${flow === 'portabilidadePura' ? 'portabilidade pura' : 'portabilidade com refinanciamento'}.` };
+    }
+
+    const nomeOrigem = contrato.banco;
+    const naoPortaHit = encontrarNaoPorta(cfg.naoPorta, nomeOrigem);
+    if (naoPortaHit){
+      return { disponivel:false, motivo: `${cfg.nome} não realiza portabilidade de contratos originados no ${nomeOrigem}.` };
+    }
+
+    const acordo = encontrarAcordo(cfg.acordoBanco, nomeOrigem);
+    if (acordo && typeof acordo.valor === 'number'){
+      if (contrato.parcelasPagas < acordo.valor){
+        return { disponivel:false, motivo: `${cfg.nome} exige ao menos ${acordo.valor} parcelas pagas em acordo comercial com o ${nomeOrigem} — este contrato possui apenas ${contrato.parcelasPagas}.` };
+      }
+    }
+
+    const minSaldo = resolverMinimo(cfg.saldoMinDevedor, contrato.saldoDevedor);
+    if (minSaldo.valor !== null && contrato.saldoDevedor !== null && contrato.saldoDevedor < minSaldo.valor){
+      return { disponivel:false, motivo: `Saldo devedor de ${brl(contrato.saldoDevedor)} abaixo do mínimo exigido pelo ${cfg.nome} (${typeof cfg.saldoMinDevedor==='number' ? brl(cfg.saldoMinDevedor) : cfg.saldoMinDevedor}).` };
+    }
+
+    const taxa = taxaNumerica(taxaConfig);
+    return { disponivel:true, prazo, taxa, taxaTextoOriginal: typeof taxaConfig === 'string' ? taxaConfig : null };
+  }
+
+  // margem livre
+  const taxa = taxaNumerica(cfg.taxaMinPortRefin); // usa a taxa de refin/novo crédito como referência de precificação
+  return { disponivel:true, prazo, taxa, taxaTextoOriginal: typeof cfg.taxaMinPortRefin === 'string' ? cfg.taxaMinPortRefin : null };
+}
+
+/* ======================= SIMULAÇÃO: MARGEM LIVRE ======================= */
+function simularMargemLivre(dados, idadeCliente){
+  const margemDisponivel = dados?.margem?.porModalidade?.emprestimos?.margemDisponivel;
+  const resultados = [];
+  for (const key of Object.keys(bancosConfig)){
+    const cfg = bancosConfig[key];
+    const av = avaliarBanco(key, cfg, 'margemLivre', { idadeCliente });
+    if (!av.disponivel){ resultados.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
+    if (margemDisponivel === null || margemDisponivel === undefined || margemDisponivel <= 0){
+      resultados.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:'Sem margem disponível para empréstimos no extrato.' });
+      continue;
+    }
+    if (av.taxa === null){
+      resultados.push({ banco:key, nome:cfg.nome, disponivel:'manual', prazo:av.prazo, taxaTextoOriginal:av.taxaTextoOriginal,
+        motivo:`Taxa não parametrizada numericamente (${av.taxaTextoOriginal || 'a definir'}) — confirmar diretamente com o banco.` });
+      continue;
+    }
+    const montanteLiberado = pricePV(margemDisponivel, av.taxa/100, av.prazo);
+    resultados.push({
+      banco:key, nome:cfg.nome, disponivel:true, prazo:av.prazo, taxa:av.taxa,
+      margemUsada: margemDisponivel, montanteLiberado
+    });
+  }
+  resultados.sort((a,b)=> (b.montanteLiberado||0) - (a.montanteLiberado||0));
+  return resultados;
+}
+
+/* ======================= SIMULAÇÃO: PORTABILIDADE PURA ======================= */
+function simularPortabilidadePura(contratosCalc, idadeCliente){
+  return contratosCalc.map(contrato => {
+    const porBanco = [];
+    for (const key of Object.keys(bancosConfig)){
+      const cfg = bancosConfig[key];
+      const av = avaliarBanco(key, cfg, 'portabilidadePura', { idadeCliente, contrato });
+      if (!av.disponivel){ porBanco.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
+      if (av.taxa === null){
+        porBanco.push({ banco:key, nome:cfg.nome, disponivel:'manual', prazo:av.prazo, taxaTextoOriginal:av.taxaTextoOriginal,
+          motivo:`Taxa não parametrizada numericamente (${av.taxaTextoOriginal || 'a definir'}) — confirmar diretamente com o banco.` });
+        continue;
+      }
+      const novaParcela = pricePMT(contrato.saldoDevedor||0, av.taxa/100, av.prazo);
+      porBanco.push({
+        banco:key, nome:cfg.nome, disponivel:true, prazo:av.prazo, taxa:av.taxa,
+        saldoPortado: contrato.saldoDevedor, parcelaAtual: numOrNull(contrato.valorParcela), novaParcela,
+        economiaParcela: (numOrNull(contrato.valorParcela)||0) - novaParcela
+      });
+    }
+    porBanco.sort((a,b)=> (a.novaParcela ?? Infinity) - (b.novaParcela ?? Infinity));
+    return { contrato, porBanco };
+  });
+}
+
+/* ======================= SIMULAÇÃO: PORTABILIDADE + REFINANCIAMENTO =======================
+   Premissa assumida (não fornecida literalmente no briefing): mantém-se a parcela atual do
+   contrato de origem como capacidade de pagamento, e calcula-se quanto essa mesma parcela
+   financia no banco de destino (taxa/prazo novos). O troco é a diferença entre esse novo
+   montante financiável e o saldo devedor do contrato de origem. */
+function simularPortabilidadeRefin(contratosCalc, idadeCliente){
+  return contratosCalc.map(contrato => {
+    const porBanco = [];
+    for (const key of Object.keys(bancosConfig)){
+      const cfg = bancosConfig[key];
+      const av = avaliarBanco(key, cfg, 'portabilidadeRefin', { idadeCliente, contrato });
+      if (!av.disponivel){ porBanco.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
+      if (av.taxa === null){
+        porBanco.push({ banco:key, nome:cfg.nome, disponivel:'manual', prazo:av.prazo, taxaTextoOriginal:av.taxaTextoOriginal,
+          motivo:`Taxa não parametrizada numericamente (${av.taxaTextoOriginal || 'a definir'}) — confirmar diretamente com o banco.` });
+        continue;
+      }
+      const parcelaAtual = numOrNull(contrato.valorParcela) || 0;
+      const novoMontante = pricePV(parcelaAtual, av.taxa/100, av.prazo);
+      const troco = novoMontante - (contrato.saldoDevedor||0);
+      const minTroco = resolverMinimo(cfg.trocoMinimo, contrato.saldoDevedor);
+      let naoVantajosa = false, motivoTroco = null;
+      if (troco <= 0){
+        naoVantajosa = true;
+        motivoTroco = 'Troco calculado é negativo ou nulo — operação não gera valor livre neste banco, nesse prazo.';
+      } else if (minTroco.valor !== null && troco < minTroco.valor){
+        naoVantajosa = true;
+        motivoTroco = `Troco de ${brl(troco)} abaixo do mínimo exigido pelo ${cfg.nome} (${minTroco.textoOriginal || brl(minTroco.valor)}).`;
+      }
+      porBanco.push({
+        banco:key, nome:cfg.nome, disponivel:true, naoVantajosa, motivoTroco,
+        prazo:av.prazo, taxa:av.taxa, saldoOrigem: contrato.saldoDevedor,
+        novoMontante, troco, parcelaNova: parcelaAtual,
+        agregaMargem: cfg.agregaMargem, unificaNoRefin: cfg.unificaNoRefin
+      });
+    }
+    porBanco.sort((a,b)=> {
+      const ta = a.disponivel===true && !a.naoVantajosa, tb = b.disponivel===true && !b.naoVantajosa;
+      if (ta!==tb) return ta ? -1 : 1;
+      return (b.troco||-Infinity) - (a.troco||-Infinity);
+    });
+    return { contrato, porBanco };
+  });
+}
+
+/* ======================= NAVEGAÇÃO / STEPPER ======================= */
+function renderStepper(){
+  const el = document.getElementById('stepper');
+  el.innerHTML = STEP_LABELS.map((label,i)=>{
+    const n = i+1;
+    const cls = n===STATE.step ? 'active' : (n<STATE.step ? 'done' : '');
+    return `<div class="step ${cls}"><span class="n">${n}</span>${label}</div>`;
+  }).join('');
+}
+function showScreen(id, step){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('visible'));
+  document.getElementById(id).classList.add('visible');
+  if (step) { STATE.step = step; renderStepper(); }
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ======================= UPLOAD ======================= */
+const uploadZone = document.getElementById('uploadZone');
+const fileInput = document.getElementById('fileInput');
+const idadeInput = document.getElementById('idadeCliente');
+const btnExtrair = document.getElementById('btnExtrair');
+
+uploadZone.addEventListener('click', ()=> fileInput.click());
+uploadZone.addEventListener('dragover', e=>{ e.preventDefault(); uploadZone.style.borderColor='var(--accent)'; });
+uploadZone.addEventListener('drop', e=>{
+  e.preventDefault();
+  if (e.dataTransfer.files && e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e=>{
+  if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+});
+function handleFile(file){
+  if (file.type !== 'application/pdf'){
+    document.getElementById('uploadError').innerHTML = '<div class="banner banner-danger">Envie um arquivo em PDF.</div>';
+    return;
+  }
+  document.getElementById('uploadError').innerHTML = '';
+  const reader = new FileReader();
+  reader.onload = () => {
+    STATE.pdfBase64 = reader.result.split(',')[1];
+    STATE.pdfMediaType = file.type;
+    uploadZone.classList.add('has-file');
+    document.getElementById('uploadZoneText').innerHTML = `<strong>${file.name}</strong><div class="hint">Arquivo carregado — clique para trocar</div>`;
+    atualizarBotaoExtrair();
+  };
+  reader.onerror = () => {
+    document.getElementById('uploadError').innerHTML = '<div class="banner banner-danger">Não foi possível ler o arquivo. Tente novamente.</div>';
+  };
+  reader.readAsDataURL(file);
+}
+idadeInput.addEventListener('input', atualizarBotaoExtrair);
+function atualizarBotaoExtrair(){
+  const idadeOk = idadeInput.value && parseInt(idadeInput.value) >= 18 && parseInt(idadeInput.value) <= 100;
+  btnExtrair.disabled = !(STATE.pdfBase64 && idadeOk);
+}
+
+btnExtrair.addEventListener('click', async ()=>{
+  STATE.idadeCliente = parseInt(idadeInput.value);
+  showScreen('screen-loading');
+  document.getElementById('loadingText').textContent = 'Lendo o extrato e extraindo os dados do benefício, da margem e dos contratos…';
+  try {
+    const dados = await DataProvider.extrairDoPDF(STATE.pdfBase64, STATE.pdfMediaType);
+    STATE.dadosExtraidos = dados;
+    renderConferencia();
+    showScreen('screen-conferencia', 2);
+  } catch(err){
+    showScreen('screen-upload');
+    document.getElementById('uploadError').innerHTML = `<div class="banner banner-danger"><b>Erro na extração:</b> ${err.message}</div>`;
+  }
+});
+
+/* ======================= TELA: CONFERÊNCIA ======================= */
+function renderConferencia(){
+  const d = STATE.dadosExtraidos;
+  const b = d.beneficiario || {};
+  const elig = avaliarElegibilidade(b);
+
+  // Alertas
+  const alertsEl = document.getElementById('conferenciaAlerts');
+  alertsEl.innerHTML = elig.alerts.map(a=>{
+    const cls = a.tipo==='danger'?'banner-danger':(a.tipo==='warn'?'banner-warn':'banner-info');
+    return `<div class="banner ${cls}">${a.msg}</div>`;
+  }).join('');
+  STATE._bloqueado = elig.bloqueado;
+  document.getElementById('btnConfirmarDados').disabled = elig.bloqueado;
+
+  // Beneficiário
+  document.getElementById('conferenciaBeneficiario').innerHTML = `
+    <div class="grid-3">
+      <div class="field"><label>Nome</label><input type="text" id="f_nome" value="${b.nome||''}"></div>
+      <div class="field"><label>Nº do benefício</label><input type="text" id="f_numBeneficio" value="${b.numeroBeneficio||''}"></div>
+      <div class="field"><label>Espécie</label><input type="text" id="f_especie" value="${b.especie||''}"></div>
+      <div class="field"><label>Situação</label><input type="text" id="f_situacao" value="${b.situacao||''}"></div>
+      <div class="field"><label>Idade do cliente</label><input type="number" id="f_idade" value="${STATE.idadeCliente}"></div>
+      <div class="field"><label>Banco de pagamento</label><input type="text" id="f_bancoPagto" value="${b.bancoPagamento||''}"></div>
+      <div class="field">
+        <label>Representante legal</label>
+        <select id="f_repLegal"><option value="false" ${!b.possuiRepresentanteLegal?'selected':''}>Não</option><option value="true" ${b.possuiRepresentanteLegal?'selected':''}>Sim</option></select>
+      </div>
+      <div class="field">
+        <label>Procurador</label>
+        <select id="f_procurador"><option value="false" ${!b.possuiProcurador?'selected':''}>Não</option><option value="true" ${b.possuiProcurador?'selected':''}>Sim</option></select>
+      </div>
+      <div class="field">
+        <label>Pensão alimentícia</label>
+        <select id="f_pensao"><option value="false" ${!b.pensaoAlimenticia?'selected':''}>Não</option><option value="true" ${b.pensaoAlimenticia?'selected':''}>Sim</option></select>
+      </div>
+      <div class="field">
+        <label>Liberado para empréstimo</label>
+        <select id="f_liberado"><option value="true" ${b.liberadoParaEmprestimo!==false?'selected':''}>Sim</option><option value="false" ${b.liberadoParaEmprestimo===false?'selected':''}>Não</option></select>
+      </div>
+      <div class="field">
+        <label>Elegível para empréstimos</label>
+        <select id="f_elegivel"><option value="true" ${b.elegivelParaEmprestimos!==false?'selected':''}>Sim</option><option value="false" ${b.elegivelParaEmprestimos===false?'selected':''}>Não</option></select>
+      </div>
+    </div>`;
+  ['f_repLegal','f_procurador','f_pensao','f_liberado','f_elegivel','f_situacao'].forEach(id=>{
+    document.getElementById(id).addEventListener('change', ()=>{ sincronizarBeneficiario(); renderConferencia(); });
+  });
+
+  // Margem
+  const m = d.margem || {};
+  const mm = m.porModalidade || {};
+  const linhaModalidade = (label, key) => {
+    const mod = mm[key] || {};
+    return `<tr>
+      <td>${label}</td>
+      <td><input type="text" data-mod="${key}" data-campo="margemConsignavel" value="${mod.margemConsignavel ?? ''}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemUtilizada" value="${mod.margemUtilizada ?? ''}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemReservada" value="${mod.margemReservada ?? ''}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemDisponivel" value="${mod.margemDisponivel ?? ''}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemExtrapolada" value="${mod.margemExtrapolada ?? ''}"></td>
+    </tr>`;
+  };
+  const proj = margemEsperadaPorEspecie(b.especie, m.baseCalculo);
+  document.getElementById('conferenciaMargem').innerHTML = `
+    <div class="grid-3" style="margin-bottom:14px;">
+      <div class="field"><label>Base de cálculo</label><input type="text" id="f_baseCalculo" value="${m.baseCalculo ?? ''}"></div>
+      <div class="field"><label>Máximo de comprometimento</label><input type="text" id="f_maxComprometimento" value="${m.maximoComprometimento ?? ''}"></div>
+      <div class="field"><label>Total comprometido</label><input type="text" id="f_totalComprometido" value="${m.totalComprometido ?? ''}"></div>
+    </div>
+    <div class="banner banner-info">
+      Conferência: pela espécie <b>${b.especie||'—'}</b>, a margem consignável esperada é de
+      <b>${pct(proj.percentualEmprestimo*100,0)}</b> da base para empréstimos
+      (${brl(proj.margemEmprestimoEsperada)}) + <b>${pct(proj.percentualCartao*100,0)}</b> para cartão
+      (${brl(proj.margemCartaoEsperada)}). Fonte: ${REGRAS_MARGEM_INSS.fonte}. Isto é apenas conferência —
+      os valores do extrato acima prevalecem.
+    </div>
+    <table class="data">
+      <thead><tr><th>Modalidade</th><th>Consignável</th><th>Utilizada</th><th>Reservada</th><th>Disponível</th><th>Extrapolada</th></tr></thead>
+      <tbody id="tbodyMargem">
+        ${linhaModalidade('Empréstimos','emprestimos')}
+        ${linhaModalidade('RMC','rmc')}
+        ${linhaModalidade('RCC','rcc')}
+      </tbody>
+    </table>`;
+  document.querySelectorAll('#tbodyMargem input').forEach(inp=>{
+    inp.addEventListener('change', sincronizarMargem);
+  });
+  document.getElementById('f_baseCalculo').addEventListener('change', sincronizarMargem);
+  document.getElementById('f_maxComprometimento').addEventListener('change', sincronizarMargem);
+  document.getElementById('f_totalComprometido').addEventListener('change', sincronizarMargem);
+
+  // Contratos
+  const contratos = d.contratosAtivos || [];
+  const hoje = STATE.hoje;
+  const linhasContratos = contratos.map((c,i)=>{
+    const calc = calcularContrato(c, hoje);
+    return `<tr data-idx="${i}">
+      <td><span class="contract-tag">${c.contrato||'—'}</span></td>
+      <td><input type="text" data-campo="banco" value="${c.banco||''}" style="min-width:110px;"></td>
+      <td><input type="text" data-campo="dataInicioDesconto" value="${c.dataInicioDesconto||''}" style="width:100px;" placeholder="DD/MM/AAAA"></td>
+      <td><input type="number" data-campo="qtdeParcelas" value="${c.qtdeParcelas||''}" style="width:70px;"></td>
+      <td><input type="text" data-campo="valorParcela" value="${c.valorParcela??''}" style="width:90px;"></td>
+      <td><input type="text" data-campo="taxaJurosMensal" value="${c.taxaJurosMensal??''}" style="width:70px;"></td>
+      <td class="right">${calc.parcelasPagas}</td>
+      <td class="right">${calc.parcelasRestantes}</td>
+      <td class="right mono">${brl(calc.saldoDevedor)}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('conferenciaContratos').innerHTML = contratos.length ? `
+    <table class="data">
+      <thead><tr>
+        <th>Contrato</th><th>Banco</th><th>Início desc.</th><th>Qtde parc.</th><th>Parcela</th><th>Taxa a.m.%</th>
+        <th class="right">Pagas</th><th class="right">Restantes</th><th class="right">Saldo devedor</th>
+      </tr></thead>
+      <tbody id="tbodyContratos">${linhasContratos}</tbody>
+    </table>
+    <p class="muted" style="margin-top:10px;">Parcelas pagas e saldo devedor são recalculados automaticamente pela Tabela Price a partir da taxa e parcela informadas.</p>
+  ` : `<p class="muted">Nenhum contrato ativo ou suspenso encontrado no extrato.</p>`;
+  document.querySelectorAll('#tbodyContratos input').forEach(inp=>{
+    inp.addEventListener('change', ()=>{ sincronizarContratos(); renderConferencia(); });
+  });
+}
+
+function sincronizarBeneficiario(){
+  const b = STATE.dadosExtraidos.beneficiario;
+  b.nome = document.getElementById('f_nome').value;
+  b.numeroBeneficio = document.getElementById('f_numBeneficio').value;
+  b.especie = document.getElementById('f_especie').value;
+  b.situacao = document.getElementById('f_situacao').value;
+  b.bancoPagamento = document.getElementById('f_bancoPagto').value;
+  b.possuiRepresentanteLegal = document.getElementById('f_repLegal').value === 'true';
+  b.possuiProcurador = document.getElementById('f_procurador').value === 'true';
+  b.pensaoAlimenticia = document.getElementById('f_pensao').value === 'true';
+  b.liberadoParaEmprestimo = document.getElementById('f_liberado').value === 'true';
+  b.elegivelParaEmprestimos = document.getElementById('f_elegivel').value === 'true';
+  STATE.idadeCliente = parseInt(document.getElementById('f_idade').value) || STATE.idadeCliente;
+}
+function sincronizarMargem(){
+  const m = STATE.dadosExtraidos.margem;
+  m.baseCalculo = numOrNull(document.getElementById('f_baseCalculo').value);
+  m.maximoComprometimento = numOrNull(document.getElementById('f_maxComprometimento').value);
+  m.totalComprometido = numOrNull(document.getElementById('f_totalComprometido').value);
+  document.querySelectorAll('#tbodyMargem input').forEach(inp=>{
+    const mod = inp.dataset.mod, campo = inp.dataset.campo;
+    m.porModalidade[mod] = m.porModalidade[mod] || {};
+    m.porModalidade[mod][campo] = numOrNull(inp.value);
+  });
+}
+function sincronizarContratos(){
+  const contratos = STATE.dadosExtraidos.contratosAtivos;
+  document.querySelectorAll('#tbodyContratos tr').forEach(tr=>{
+    const idx = parseInt(tr.dataset.idx);
+    tr.querySelectorAll('input').forEach(inp=>{
+      const campo = inp.dataset.campo;
+      if (['qtdeParcelas'].includes(campo)) contratos[idx][campo] = parseInt(inp.value)||0;
+      else if (['valorParcela','taxaJurosMensal'].includes(campo)) contratos[idx][campo] = numOrNull(inp.value);
+      else contratos[idx][campo] = inp.value;
+    });
+  });
+}
+
+document.getElementById('btnVoltarUpload').addEventListener('click', ()=> showScreen('screen-upload', 1));
+document.getElementById('btnConfirmarDados').addEventListener('click', ()=>{
+  sincronizarBeneficiario(); sincronizarMargem(); sincronizarContratos();
+  if (STATE._bloqueado) return;
+  showScreen('screen-fluxo', 3);
+});
+
+/* ======================= TELA: ESCOLHA DE FLUXO ======================= */
+document.querySelectorAll('.flow-card').forEach(card=>{
+  card.addEventListener('click', ()=>{
+    STATE.fluxoAtual = card.dataset.flow;
+    renderResultado(STATE.fluxoAtual);
+    showScreen('screen-resultado', 4);
+  });
+});
+document.getElementById('btnVoltarConferencia').addEventListener('click', ()=> showScreen('screen-conferencia', 2));
+document.getElementById('btnVoltarFluxo').addEventListener('click', ()=> showScreen('screen-fluxo', 3));
+document.getElementById('btnVoltarResultado').addEventListener('click', ()=> showScreen('screen-resultado', 4));
+document.getElementById('btnVerComparativo').addEventListener('click', ()=>{
+  renderComparativo();
+  showScreen('screen-comparativo', 5);
+});
+document.getElementById('btnReiniciar').addEventListener('click', ()=>{
+  STATE.pdfBase64=null; STATE.dadosExtraidos=null; STATE.fluxoAtual=null; STATE.idadeCliente=null;
+  idadeInput.value=''; fileInput.value=''; uploadZone.classList.remove('has-file');
+  document.getElementById('uploadZoneText').innerHTML = '<strong>Clique para selecionar o PDF</strong><div class="hint">ou arraste o arquivo até aqui</div>';
+  atualizarBotaoExtrair();
+  showScreen('screen-upload', 1);
+});
+
+/* ======================= RENDER: RESULTADO POR FLUXO ======================= */
+function bancoLinhaHTML(item, tipo){
+  if (item.disponivel === false){
+    return `<div class="bank-block unavailable">
+      <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-off">Indisponível</span></div>
+      <div class="bank-body"><p style="margin:0;">${item.motivo}</p></div>
+    </div>`;
+  }
+  if (item.disponivel === 'manual'){
+    return `<div class="bank-block">
+      <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-warn">Confirmar taxa</span></div>
+      <div class="bank-body"><p style="margin:0;">${item.motivo}</p></div>
+    </div>`;
+  }
+  if (tipo === 'margemLivre'){
+    return `<div class="bank-block">
+      <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-ok">Disponível</span></div>
+      <div class="bank-body">
+        <div class="grid-3">
+          <div class="kpi"><div class="v">${brl(item.montanteLiberado)}</div><div class="l">Montante liberável</div></div>
+          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
+          <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
+        </div>
+      </div>
+    </div>`;
+  }
+  if (tipo === 'portabilidadePura'){
+    return `<div class="bank-block">
+      <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-ok">Disponível</span></div>
+      <div class="bank-body">
+        <div class="grid-3">
+          <div class="kpi"><div class="v">${brl(item.novaParcela)}</div><div class="l">Nova parcela</div></div>
+          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
+          <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
+        </div>
+        <p class="muted" style="margin-top:10px;">Parcela atual: ${brl(item.parcelaAtual)} &middot; Saldo portado: ${brl(item.saldoPortado)} &middot;
+          ${item.economiaParcela>=0 ? `Economia de ${brl(item.economiaParcela)}/mês` : `Parcela ${brl(-item.economiaParcela)} maior que a atual`}</p>
+      </div>
+    </div>`;
+  }
+  // portabilidadeRefin
+  const pillTroco = item.naoVantajosa ? '<span class="pill pill-warn">Troco insuficiente</span>' : '<span class="pill pill-ok">Disponível</span>';
+  return `<div class="bank-block ${item.naoVantajosa?'unavailable':''}">
+    <div class="bank-head"><h3>${item.nome}</h3>${pillTroco}</div>
+    <div class="bank-body">
+      <div class="grid-3">
+        <div class="kpi"><div class="v">${brl(item.troco)}</div><div class="l">Troco líquido</div></div>
+        <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
+        <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
+      </div>
+      <p class="muted" style="margin-top:10px;">Novo montante financiado: ${brl(item.novoMontante)} &middot; Saldo do contrato de origem: ${brl(item.saldoOrigem)}
+        ${item.agregaMargem ? ' &middot; Agrega margem de outros contratos' : ''}${item.unificaNoRefin ? ` &middot; Unifica até ${item.unificaNoRefin===true?'todos os':item.unificaNoRefin} contrato(s)` : ''}</p>
+      ${item.motivoTroco ? `<p style="color:var(--warn); margin-top:6px;">${item.motivoTroco}</p>` : ''}
+    </div>
+  </div>`;
+}
+
+function renderResultado(flow){
+  const d = STATE.dadosExtraidos;
+  const idade = STATE.idadeCliente;
+  const titulos = {
+    margemLivre: 'Margem livre — comparativo entre bancos',
+    portabilidadePura: 'Portabilidade pura — por contrato',
+    portabilidadeRefin: 'Portabilidade + Refinanciamento — por contrato'
+  };
+  document.getElementById('resultadoTitulo').textContent = titulos[flow];
+  const el = document.getElementById('resultadoConteudo');
+
+  if (flow === 'margemLivre'){
+    const resultados = simularMargemLivre(d, idade);
+    const margemDisp = d?.margem?.porModalidade?.emprestimos?.margemDisponivel;
+    el.innerHTML = `
+      <div class="card card-tight">
+        <p style="margin:0;">Margem disponível para empréstimos usada na simulação: <b>${brl(margemDisp)}/mês</b>.</p>
+      </div>
+      ${resultados.map(r=>bancoLinhaHTML(r,'margemLivre')).join('')}
+    `;
+    return;
+  }
+
+  const contratos = (d.contratosAtivos||[]).map(c=>calcularContrato(c, STATE.hoje));
+  if (!contratos.length){
+    el.innerHTML = `<div class="card"><p class="muted" style="margin:0;">Não há contratos ativos para simular este fluxo.</p></div>`;
+    return;
+  }
+  const porContrato = flow === 'portabilidadePura'
+    ? simularPortabilidadePura(contratos, idade)
+    : simularPortabilidadeRefin(contratos, idade);
+
+  el.innerHTML = porContrato.map(({contrato, porBanco})=>`
+    <div class="card">
+      <h3>Contrato ${contrato.contrato||'—'} &middot; ${contrato.banco||'—'}</h3>
+      <p class="muted">Saldo devedor atual: <b>${brl(contrato.saldoDevedor)}</b> &middot; parcela ${brl(numOrNull(contrato.valorParcela))} &middot;
+        ${contrato.parcelasPagas} pagas / ${contrato.parcelasRestantes} restantes</p>
+      ${porBanco.map(item=>bancoLinhaHTML(item, flow)).join('')}
+    </div>
+  `).join('');
+}
+
+/* ======================= RENDER: COMPARATIVO FINAL ======================= */
+function renderComparativo(){
+  const d = STATE.dadosExtraidos;
+  const idade = STATE.idadeCliente;
+  const contratos = (d.contratosAtivos||[]).map(c=>calcularContrato(c, STATE.hoje));
+
+  const margemLivre = simularMargemLivre(d, idade);
+  const puraPorContrato = contratos.length ? simularPortabilidadePura(contratos, idade) : [];
+  const refinPorContrato = contratos.length ? simularPortabilidadeRefin(contratos, idade) : [];
+
+  // agrega por banco
+  const agregPura = {}, agregRefin = {};
+  puraPorContrato.forEach(({porBanco})=>{
+    porBanco.forEach(item=>{
+      if (!agregPura[item.banco]) agregPura[item.banco] = { nome:item.nome, novaParcelaTotal:0, disponivel:false, algumMotivo:null };
+      if (item.disponivel===true){ agregPura[item.banco].disponivel = true; agregPura[item.banco].novaParcelaTotal += (item.novaParcela||0); }
+      else if (!agregPura[item.banco].algumMotivo) agregPura[item.banco].algumMotivo = item.motivo;
+    });
+  });
+  refinPorContrato.forEach(({porBanco})=>{
+    porBanco.forEach(item=>{
+      if (!agregRefin[item.banco]) agregRefin[item.banco] = { nome:item.nome, trocoTotal:0, disponivel:false, algumMotivo:null };
+      if (item.disponivel===true && !item.naoVantajosa){ agregRefin[item.banco].disponivel = true; agregRefin[item.banco].trocoTotal += (item.troco||0); }
+      else if (!agregRefin[item.banco].algumMotivo) agregRefin[item.banco].algumMotivo = item.motivo || item.motivoTroco;
+    });
+  });
+
+  const linhas = Object.keys(bancosConfig).map(key=>{
+    const cfg = bancosConfig[key];
+    const ml = margemLivre.find(r=>r.banco===key);
+    const pu = agregPura[key];
+    const re = agregRefin[key];
+    return `<tr>
+      <td><b>${cfg.nome}</b></td>
+      <td class="right">${ml && ml.disponivel===true ? brl(ml.montanteLiberado) : (ml && ml.disponivel==='manual' ? '<span class="muted">confirmar taxa</span>' : '<span class="muted">indisponível</span>')}</td>
+      <td class="right">${pu && pu.disponivel ? brl(pu.novaParcelaTotal) + '/mês' : '<span class="muted">indisponível</span>'}</td>
+      <td class="right">${re && re.disponivel ? brl(re.trocoTotal) : '<span class="muted">indisponível</span>'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('comparativoConteudo').innerHTML = `
+    <table class="data">
+      <thead><tr>
+        <th>Banco</th>
+        <th class="right">Margem livre (montante)</th>
+        <th class="right">Portabilidade pura (nova parcela total)</th>
+        <th class="right">Portabilidade + Refin (troco total)</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <p class="muted" style="margin-top:12px;">
+      Valores agregados considerando todos os contratos ativos elegíveis para portar em cada banco.
+      "Indisponível" significa que o banco não atende a idade informada, não porta a origem do contrato,
+      não atinge o acordo comercial mínimo, ou o troco/saldo mínimo não foi alcançado.
+    </p>`;
+}
+
+/* ======================= INICIALIZAÇÃO ======================= */
+renderStepper();
+showScreen('screen-upload', 1);
+</script>
+
+</body>
+</html>
