@@ -499,6 +499,12 @@ const bancosConfig = {
 };
 // BMG não entra no sistema por decisão do usuário.
 
+// Bancos exibidos ao usuário nas telas de resultado/comparativo. Os demais (Digio, Acredto,
+// ICred, Finanto, Banrisul, Total Cash, Paraná Banco) continuam parametrizados em bancosConfig
+// para uso futuro, mas não aparecem como opção nas simulações.
+const BANCOS_EXIBIDOS = ['C6', 'FACTA', 'DAYCOVAL', 'BRB'];
+
+
 /* ======================= HELPERS NUMÉRICOS / FORMATAÇÃO ======================= */
 function brl(v){
   if (v===null || v===undefined || isNaN(v)) return '—';
@@ -575,13 +581,28 @@ function margemEsperadaPorEspecie(especieStr, baseCalculo){
 }
 
 /* ======================= CÁLCULO POR CONTRATO: PARCELAS PAGAS E SALDO DEVEDOR =======================
-   Usa a data de "PRIMEIRO DESCONTO" (dia exato) quando disponível — é mais precisa que a
-   "competência de início de desconto" (que no extrato do INSS vem só como mês/ano). */
+   Parcelas pagas usa EXCLUSIVAMENTE a competência "Início de Desconto" (mês/ano) — nunca a data
+   de inclusão, nem qualquer outro campo — e nunca depende de taxa/parcela/CET estarem presentes.
+   Fórmula: mesesDecorridos = (anoAtual×12+mesAtual) − (anoInício×12+mesInício) + 1 (o mês do
+   início já conta como a 1ª parcela paga), sempre limitado entre 0 e o total de parcelas. */
+function competenciaParaAnoMes(str){
+  if (!str) return null;
+  const m = String(str).match(/(\d{1,2})\s*\/\s*(\d{4})/);
+  if (!m) return null;
+  const mes = parseInt(m[1]), ano = parseInt(m[2]);
+  if (mes < 1 || mes > 12) return null;
+  return { mes, ano };
+}
 function calcularContrato(contrato, hoje){
-  const dataPrimeiroDesconto = parseDataBR(contrato.dataPrimeiroDesconto || contrato.dataInicioDesconto);
   const total = contrato.qtdeParcelas || 0;
-  let parcelasPagas = dataPrimeiroDesconto ? mesesEntre(dataPrimeiroDesconto, hoje) : 0;
-  parcelasPagas = Math.max(0, Math.min(parcelasPagas, total));
+  const inicio = competenciaParaAnoMes(contrato.dataInicioDesconto);
+  let parcelasPagas = 0;
+  if (inicio){
+    const idxAtual = hoje.getFullYear()*12 + (hoje.getMonth()+1);
+    const idxInicio = inicio.ano*12 + inicio.mes;
+    const mesesDecorridos = idxAtual - idxInicio + 1;
+    parcelasPagas = Math.max(0, Math.min(mesesDecorridos, total));
+  }
   const parcelasRestantes = Math.max(0, total - parcelasPagas);
   const taxa = numOrNull(contrato.taxaJurosMensal);
   const parcela = numOrNull(contrato.valorParcela);
@@ -777,9 +798,12 @@ function parsePaginaMargem(words){
 
 /* -------- Páginas 3+: Contratos ativos e suspensos --------
    Algoritmo: usa a coluna SITUAÇÃO ("Ativo"/"Suspenso") como âncora de cada linha, já que é a
-   única célula de uma palavra só (nunca quebra quebra em várias linhas); a partir das âncoras,
-   calcula a faixa vertical de cada linha da tabela e distribui as demais palavras pelas colunas
-   usando a posição x. Ignora completamente a tabela "CONTRATOS EXCLUÍDOS E ENCERRADOS". */
+   única célula que sempre começa com uma palavra isolada (nunca quebra no meio); a partir das
+   âncoras, calcula a faixa vertical de cada linha da tabela e distribui as demais palavras pelas
+   colunas usando a posição x. Traz TODAS as linhas — Ativo e Suspenso — e nunca confunde com a
+   tabela "CONTRATOS EXCLUÍDOS E ENCERRADOS": lá a coluna situação usa "Excluído"/"Encerrado",
+   palavras diferentes, então não é preciso cortar a página por posição — só o casamento exato
+   do texto já resolve, sem risco de cortar uma linha válida perto do limite entre as tabelas. */
 async function extrairContratosAtivos(pdfDoc){
   const contratos = [];
   let emSecao = false;
@@ -794,13 +818,7 @@ async function extrairContratosAtivos(pdfDoc){
     if (!emSecao && temAtivos) emSecao = true;
     if (!emSecao) continue;
 
-    let pageWords = words;
-    if (temExcluidos){
-      const posExcl = words.find(w => /EXCLU[ÍI]DOS/i.test(w.text));
-      if (posExcl) pageWords = words.filter(w => w.top < posExcl.top - 5);
-    }
-
-    const anchors = pageWords.filter(w => colForX(w.x, COLS_ATIVOS)==='situacao' && /^(Ativo|Suspenso)$/i.test(w.text));
+    const anchors = words.filter(w => colForX(w.x, COLS_ATIVOS)==='situacao' && /^(Ativo|Suspenso)$/i.test(w.text));
     anchors.sort((a,b)=>a.top-b.top);
 
     if (anchors.length){
@@ -815,7 +833,7 @@ async function extrairContratosAtivos(pdfDoc){
       ]);
 
       for (const [y0,y1] of bounds){
-        const rowWords = pageWords.filter(w => w.top>=y0 && w.top<y1);
+        const rowWords = words.filter(w => w.top>=y0 && w.top<y1);
         const cell = {};
         for (const w of rowWords){ const c = colForX(w.x, COLS_ATIVOS); if(!c) continue; (cell[c]=cell[c]||[]).push(w); }
         for (const c in cell) cell[c].sort((a,b)=>a.top-b.top);
@@ -823,7 +841,7 @@ async function extrairContratosAtivos(pdfDoc){
         contratos.push({
           contrato: j('contrato'),
           banco: j('banco',' ').replace(/\s+/g,' ').trim(),
-          situacao: j('situacao'),
+          situacao: j('situacao',' ').replace(/\s+/g,' ').trim(),
           origemAverbacao: j('origemAverbacao',' ').replace(/\s+/g,' ').trim(),
           dataInclusao: normalizarData2Digitos(j('dataInclusao')),
           dataInicioDesconto: j('inicioDesconto') || null, // competência MM/AAAA
@@ -989,7 +1007,7 @@ function avaliarBanco(bancoKey, cfg, flow, ctx){
 function simularMargemLivre(dados, idadeCliente){
   const margemDisponivel = dados?.margem?.porModalidade?.emprestimos?.margemDisponivel;
   const resultados = [];
-  for (const key of Object.keys(bancosConfig)){
+  for (const key of BANCOS_EXIBIDOS){
     const cfg = bancosConfig[key];
     const av = avaliarBanco(key, cfg, 'margemLivre', { idadeCliente });
     if (!av.disponivel){ resultados.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
@@ -1016,7 +1034,7 @@ function simularMargemLivre(dados, idadeCliente){
 function simularPortabilidadePura(contratosCalc, idadeCliente){
   return contratosCalc.map(contrato => {
     const porBanco = [];
-    for (const key of Object.keys(bancosConfig)){
+    for (const key of BANCOS_EXIBIDOS){
       const cfg = bancosConfig[key];
       const av = avaliarBanco(key, cfg, 'portabilidadePura', { idadeCliente, contrato });
       if (!av.disponivel){ porBanco.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
@@ -1045,7 +1063,7 @@ function simularPortabilidadePura(contratosCalc, idadeCliente){
 function simularPortabilidadeRefin(contratosCalc, idadeCliente){
   return contratosCalc.map(contrato => {
     const porBanco = [];
-    for (const key of Object.keys(bancosConfig)){
+    for (const key of BANCOS_EXIBIDOS){
       const cfg = bancosConfig[key];
       const av = avaliarBanco(key, cfg, 'portabilidadeRefin', { idadeCliente, contrato });
       if (!av.disponivel){ porBanco.push({ banco:key, nome:cfg.nome, disponivel:false, motivo:av.motivo }); continue; }
@@ -1471,7 +1489,7 @@ function renderComparativo(){
     });
   });
 
-  const linhas = Object.keys(bancosConfig).map(key=>{
+  const linhas = BANCOS_EXIBIDOS.map(key=>{
     const cfg = bancosConfig[key];
     const ml = margemLivre.find(r=>r.banco===key);
     const pu = agregPura[key];
