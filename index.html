@@ -302,19 +302,6 @@
     </div>
     <div id="resultadoConteudo"></div>
     <div class="btn-row">
-      <button class="btn" id="btnVerComparativo">Ver comparativo entre todos os bancos &rarr;</button>
-    </div>
-  </div>
-
-  <!-- SCREEN 6: COMPARATIVO -->
-  <div class="screen" id="screen-comparativo">
-    <div class="card">
-      <h2>4. Comparativo entre bancos</h2>
-      <p>Resultado consolidado dos três fluxos, lado a lado, para os bancos parametrizados.</p>
-      <div id="comparativoConteudo"></div>
-    </div>
-    <div class="btn-row">
-      <button class="btn-secondary btn" id="btnVoltarResultado">&larr; Voltar ao fluxo</button>
       <button class="btn-secondary btn" id="btnReiniciar">Novo cliente / novo extrato</button>
     </div>
   </div>
@@ -333,7 +320,7 @@ const STATE = {
   hoje: new Date()
 };
 
-const STEP_LABELS = ['Upload', 'Conferência', 'Fluxo', 'Simulação', 'Comparativo'];
+const STEP_LABELS = ['Upload', 'Conferência', 'Fluxo', 'Simulação'];
 
 /* ======================= CONSTANTE DE MARGEM (conferência/projeção) =======================
    Nunca sobrepõe o valor de margem já impresso no extrato do INSS (fonte da verdade).
@@ -606,9 +593,19 @@ function calcularContrato(contrato, hoje){
   const parcelasRestantes = Math.max(0, total - parcelasPagas);
   const taxa = numOrNull(contrato.taxaJurosMensal);
   const parcela = numOrNull(contrato.valorParcela);
+  const emprestado = numOrNull(contrato.valorEmprestado);
+  // Saldo devedor ancorado no valor "Emprestado" do extrato, amortizado para frente pelas
+  // parcelas já pagas (Tabela Price): saldo = Emprestado×(1+i)^n − Parcela×[(1+i)^n−1]/i
   let saldoDevedor = null;
-  if (taxa!=null && parcela!=null){
-    saldoDevedor = pricePV(parcela, taxa/100, parcelasRestantes);
+  if (taxa!=null && parcela!=null && emprestado!=null){
+    const i = taxa/100;
+    if (i === 0){
+      saldoDevedor = emprestado - parcela*parcelasPagas;
+    } else {
+      const fator = Math.pow(1+i, parcelasPagas);
+      saldoDevedor = emprestado*fator - parcela*(fator-1)/i;
+    }
+    saldoDevedor = Math.max(0, saldoDevedor);
   }
   return { ...contrato, parcelasPagas, parcelasRestantes, saldoDevedor };
 }
@@ -675,12 +672,20 @@ async function getPageWords(page){
   for (const item of content.items){
     if (!item.str || !item.str.trim()) continue;
     const m = pdfjsLib.Util.transform(viewport.transform, item.transform);
-    const parts = item.str.split(/(\s+)/).filter(p => p.trim());
-    if (parts.length <= 1){ words.push({ text: item.str.trim(), x: m[4], top: m[5] }); continue; }
-    const totalLen = item.str.length; let charPos = 0;
+    // usa o índice real de cada palavra na string original (via indexOf a partir do ponto
+    // anterior) para estimar a fração de x — isso conta corretamente os espaços entre
+    // palavras, que "charPos += part.length" pulava, subestimando a posição das palavras
+    // seguintes à primeira dentro de um mesmo item de texto.
+    const original = item.str;
+    const parts = original.split(/(\s+)/).filter(p => p.trim());
+    if (parts.length <= 1){ words.push({ text: original.trim(), x: m[4], top: m[5] }); continue; }
+    const totalLen = original.length;
+    let searchFrom = 0;
     for (const part of parts){
+      const idx = original.indexOf(part, searchFrom);
+      const charPos = idx >= 0 ? idx : searchFrom;
       words.push({ text: part, x: m[4] + (charPos/totalLen)*(item.width||0), top: m[5] });
-      charPos += part.length;
+      searchFrom = charPos + part.length;
     }
   }
   return words;
@@ -699,11 +704,27 @@ function groupRows(words, tol=2.5){
 function rowText(row, xMin=-1, xMax=99999){
   return row.words.filter(w=>w.x>=xMin && w.x<xMax).map(w=>w.text).join(' ').replace(/\s+/g,' ').trim();
 }
+/* ======================= CONVERSÃO CENTRAL DE VALORES MONETÁRIOS EM FORMATO BR =======================
+   Função ÚNICA usada em todo o sistema para converter texto de valores em reais para número.
+   Formato brasileiro: ponto = separador de milhar, vírgula = separador decimal.
+   Ex.: "R$1.821,67" -> 1821.67. Nunca fazer essa conversão "na mão" em outro lugar do código —
+   sempre passar pelo parseValorBR (ou pelo parseMoneyBR, que só isola o trecho numérico e delega
+   pra cá) para garantir que todo valor monetário do sistema seja interpretado da mesma forma. */
+function parseValorBR(tokenNumerico){
+  if (tokenNumerico === null || tokenNumerico === undefined) return null;
+  const limpo = String(tokenNumerico).trim();
+  if (!limpo || limpo === '-') return null;
+  const negativo = limpo.startsWith('-');
+  const semSinal = negativo ? limpo.slice(1) : limpo;
+  if (!/^\d{1,3}(\.\d{3})*,\d{2}$/.test(semSinal) && !/^\d+,\d{2}$/.test(semSinal)) return null;
+  const valor = parseFloat(semSinal.replace(/\./g,'').replace(',','.'));
+  return isNaN(valor) ? null : (negativo ? -valor : valor);
+}
 function parseMoneyBR(str){
   if (!str) return null;
-  const m = String(str).match(/-?[\d.]+,\d{2}/);
+  const m = String(str).match(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}/);
   if (!m) return null;
-  return parseFloat(m[0].replace(/\./g,'').replace(',','.'));
+  return parseValorBR(m[0]);
 }
 function parsePctBR(str){
   if (!str) return null;
@@ -778,9 +799,8 @@ function parsePaginaMargem(words){
   const tresValores = (row) => {
     if (!row) return [null,null,null];
     const text = rowText(row);
-    const matches = [...text.matchAll(/-?[\d.]+,\d{2}|(?<![\w$])-(?![\w,])/g)].map(x=>x[0]);
-    const parse = (v) => (v===undefined || v==='-') ? null : parseFloat(v.replace(/\./g,'').replace(',','.'));
-    return [parse(matches[0]), parse(matches[1]), parse(matches[2])];
+    const matches = [...text.matchAll(/-?\d{1,3}(?:\.\d{3})*,\d{2}|-?\d+,\d{2}|(?<![\w$])-(?![\w,])/g)].map(x=>x[0]);
+    return [parseValorBR(matches[0]), parseValorBR(matches[1]), parseValorBR(matches[2])];
   };
   const setModal = (row, campo) => {
     const [emp,rmc,rcc] = tresValores(row);
@@ -818,7 +838,24 @@ async function extrairContratosAtivos(pdfDoc){
     if (!emSecao && temAtivos) emSecao = true;
     if (!emSecao) continue;
 
-    const anchors = words.filter(w => colForX(w.x, COLS_ATIVOS)==='situacao' && /^(Ativo|Suspenso)$/i.test(w.text));
+    // Âncora: usa a coluna QTDE PARCELAS, não SITUAÇÃO — porque a coluna SITUAÇÃO é estreita
+    // demais para "Suspenso Banco"/"Suspenso INSS" e o PDF quebra a própria palavra "Suspenso"
+    // no meio ("Suspe"/"nso"/"Banco" em fragmentos separados), então nunca bate um match exato.
+    // QTDE PARCELAS é sempre um número curto (2-3 dígitos) que nunca quebra em várias linhas —
+    // mas essa coluna existe IGUAL na tabela de excluídos, então aqui (diferente da situação,
+    // que não se confunde por texto) o corte por posição é necessário: qualquer âncora a partir
+    // de onde "CONTRATOS EXCLUÍDOS E ENCERRADOS" aparece nesta página é ignorada.
+    let limiteExcluidos = null;
+    if (temExcluidos){
+      const posExcl = words.find(w => /EXCLU[ÍI]DOS/i.test(w.text));
+      if (posExcl) limiteExcluidos = posExcl.top;
+    }
+    const anchors = words.filter(w => {
+      if (colForX(w.x, COLS_ATIVOS) !== 'qtdeParcelas') return false;
+      if (!/^\d{1,3}$/.test(w.text)) return false;
+      if (limiteExcluidos !== null && w.top >= limiteExcluidos) return false;
+      return true;
+    });
     anchors.sort((a,b)=>a.top-b.top);
 
     if (anchors.length){
@@ -829,14 +866,14 @@ async function extrairContratosAtivos(pdfDoc){
 
       const bounds = tops.map((t,i) => [
         i===0 ? (primeiraPaginaDaSecao ? t - MARGIN_ABOVE_FIRST_ANCHOR : t - medianGap/2) : (tops[i-1]+t)/2,
-        i===tops.length-1 ? t + medianGap/2 : (t+tops[i+1])/2
+        i===tops.length-1 ? Math.min(t + medianGap/2, limiteExcluidos ?? Infinity) : (t+tops[i+1])/2
       ]);
 
       for (const [y0,y1] of bounds){
         const rowWords = words.filter(w => w.top>=y0 && w.top<y1);
         const cell = {};
         for (const w of rowWords){ const c = colForX(w.x, COLS_ATIVOS); if(!c) continue; (cell[c]=cell[c]||[]).push(w); }
-        for (const c in cell) cell[c].sort((a,b)=>a.top-b.top);
+        for (const c in cell) cell[c].sort((a,b)=> (a.top-b.top) || (a.x-b.x)); // desempata por x quando o "top" é igual (fragmentos partidos na mesma linha)
         const j = (c,sep='') => (cell[c]||[]).map(w=>w.text).join(sep);
         contratos.push({
           contrato: j('contrato'),
@@ -1350,11 +1387,6 @@ document.querySelectorAll('.flow-card').forEach(card=>{
 });
 document.getElementById('btnVoltarConferencia').addEventListener('click', ()=> showScreen('screen-conferencia', 2));
 document.getElementById('btnVoltarFluxo').addEventListener('click', ()=> showScreen('screen-fluxo', 3));
-document.getElementById('btnVoltarResultado').addEventListener('click', ()=> showScreen('screen-resultado', 4));
-document.getElementById('btnVerComparativo').addEventListener('click', ()=>{
-  renderComparativo();
-  showScreen('screen-comparativo', 5);
-});
 document.getElementById('btnReiniciar').addEventListener('click', ()=>{
   STATE.pdfBase64=null; STATE.dadosExtraidos=null; STATE.fluxoAtual=null; STATE.idadeCliente=null;
   idadeInput.value=''; fileInput.value=''; uploadZone.classList.remove('has-file');
@@ -1362,6 +1394,20 @@ document.getElementById('btnReiniciar').addEventListener('click', ()=>{
   atualizarBotaoExtrair();
   showScreen('screen-upload', 1);
 });
+
+/* ======================= COPIAR MENSAGEM PRONTA ======================= */
+async function copiarMensagem(texto, btn){
+  try{
+    await navigator.clipboard.writeText(texto);
+    const original = btn.textContent;
+    btn.textContent = 'Copiado!';
+    btn.disabled = true;
+    setTimeout(()=>{ btn.textContent = original; btn.disabled = false; }, 1800);
+  } catch(e){
+    alert('Não foi possível copiar automaticamente. Texto:\n\n' + texto);
+  }
+}
+window.copiarMensagem = copiarMensagem;
 
 /* ======================= RENDER: RESULTADO POR FLUXO ======================= */
 function bancoLinhaHTML(item, tipo){
@@ -1378,13 +1424,18 @@ function bancoLinhaHTML(item, tipo){
     </div>`;
   }
   if (tipo === 'margemLivre'){
+    const msg = `${item.prazo}x de ${brl(item.margemUsada)} — valor liberado de ${brl(item.montanteLiberado)}`;
     return `<div class="bank-block">
       <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-ok">Disponível</span></div>
       <div class="bank-body">
         <div class="grid-3">
-          <div class="kpi"><div class="v">${brl(item.montanteLiberado)}</div><div class="l">Montante liberável</div></div>
-          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
-          <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
+          <div class="kpi"><div class="v">${brl(item.margemUsada)}</div><div class="l">Valor da parcela</div></div>
+          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo</div></div>
+          <div class="kpi"><div class="v">${brl(item.montanteLiberado)}</div><div class="l">Valor liberado</div></div>
+        </div>
+        <p class="muted" style="margin-top:10px;">Taxa: ${pct(item.taxa,2)} a.m.</p>
+        <div class="btn-row" style="margin-top:4px;">
+          <button class="btn-secondary btn" style="padding:6px 12px; font-size:12.5px;" onclick='copiarMensagem(${JSON.stringify(msg).replace(/'/g,"&#39;")}, this)'>Copiar</button>
         </div>
       </div>
     </div>`;
@@ -1394,12 +1445,15 @@ function bancoLinhaHTML(item, tipo){
       <div class="bank-head"><h3>${item.nome}</h3><span class="pill pill-ok">Disponível</span></div>
       <div class="bank-body">
         <div class="grid-3">
-          <div class="kpi"><div class="v">${brl(item.novaParcela)}</div><div class="l">Nova parcela</div></div>
-          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
-          <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
+          <div class="kpi"><div class="v">${brl(item.novaParcela)}</div><div class="l">Valor da parcela</div></div>
+          <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo</div></div>
+          <div class="kpi"><div class="v">${brl(item.saldoPortado)}</div><div class="l">Saldo portado</div></div>
         </div>
-        <p class="muted" style="margin-top:10px;">Parcela atual: ${brl(item.parcelaAtual)} &middot; Saldo portado: ${brl(item.saldoPortado)} &middot;
+        <p class="muted" style="margin-top:10px;">Taxa: ${pct(item.taxa,2)} a.m. &middot; Parcela atual: ${brl(item.parcelaAtual)} &middot;
           ${item.economiaParcela>=0 ? `Economia de ${brl(item.economiaParcela)}/mês` : `Parcela ${brl(-item.economiaParcela)} maior que a atual`}</p>
+        <div class="btn-row" style="margin-top:4px;">
+          <button class="btn-secondary btn" style="padding:6px 12px; font-size:12.5px;" onclick='copiarMensagem(${JSON.stringify(`${item.prazo}x de ${brl(item.novaParcela)} — saldo portado de ${brl(item.saldoPortado)}`).replace(/'/g,"&#39;")}, this)'>Copiar</button>
+        </div>
       </div>
     </div>`;
   }
@@ -1409,13 +1463,16 @@ function bancoLinhaHTML(item, tipo){
     <div class="bank-head"><h3>${item.nome}</h3>${pillTroco}</div>
     <div class="bank-body">
       <div class="grid-3">
+        <div class="kpi"><div class="v">${brl(item.parcelaNova)}</div><div class="l">Valor da parcela</div></div>
+        <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo</div></div>
         <div class="kpi"><div class="v">${brl(item.troco)}</div><div class="l">Troco líquido</div></div>
-        <div class="kpi"><div class="v">${item.prazo}x</div><div class="l">Prazo (idade)</div></div>
-        <div class="kpi"><div class="v">${pct(item.taxa,2)} a.m.</div><div class="l">Taxa</div></div>
       </div>
-      <p class="muted" style="margin-top:10px;">Novo montante financiado: ${brl(item.novoMontante)} &middot; Saldo do contrato de origem: ${brl(item.saldoOrigem)}
+      <p class="muted" style="margin-top:10px;">Taxa: ${pct(item.taxa,2)} a.m. &middot; Novo montante financiado: ${brl(item.novoMontante)} &middot; Saldo do contrato de origem: ${brl(item.saldoOrigem)}
         ${item.agregaMargem ? ' &middot; Agrega margem de outros contratos' : ''}${item.unificaNoRefin ? ` &middot; Unifica até ${item.unificaNoRefin===true?'todos os':item.unificaNoRefin} contrato(s)` : ''}</p>
       ${item.motivoTroco ? `<p style="color:var(--warn); margin-top:6px;">${item.motivoTroco}</p>` : ''}
+      <div class="btn-row" style="margin-top:4px;">
+        <button class="btn-secondary btn" style="padding:6px 12px; font-size:12.5px;" onclick='copiarMensagem(${JSON.stringify(`${item.prazo}x de ${brl(item.parcelaNova)} — valor liberado de ${brl(item.troco)}`).replace(/'/g,"&#39;")}, this)'>Copiar</button>
+      </div>
     </div>
   </div>`;
 }
@@ -1460,63 +1517,6 @@ function renderResultado(flow){
       ${porBanco.map(item=>bancoLinhaHTML(item, flow)).join('')}
     </div>
   `).join('');
-}
-
-/* ======================= RENDER: COMPARATIVO FINAL ======================= */
-function renderComparativo(){
-  const d = STATE.dadosExtraidos;
-  const idade = STATE.idadeCliente;
-  const contratos = (d.contratosAtivos||[]).map(c=>calcularContrato(c, STATE.hoje));
-
-  const margemLivre = simularMargemLivre(d, idade);
-  const puraPorContrato = contratos.length ? simularPortabilidadePura(contratos, idade) : [];
-  const refinPorContrato = contratos.length ? simularPortabilidadeRefin(contratos, idade) : [];
-
-  // agrega por banco
-  const agregPura = {}, agregRefin = {};
-  puraPorContrato.forEach(({porBanco})=>{
-    porBanco.forEach(item=>{
-      if (!agregPura[item.banco]) agregPura[item.banco] = { nome:item.nome, novaParcelaTotal:0, disponivel:false, algumMotivo:null };
-      if (item.disponivel===true){ agregPura[item.banco].disponivel = true; agregPura[item.banco].novaParcelaTotal += (item.novaParcela||0); }
-      else if (!agregPura[item.banco].algumMotivo) agregPura[item.banco].algumMotivo = item.motivo;
-    });
-  });
-  refinPorContrato.forEach(({porBanco})=>{
-    porBanco.forEach(item=>{
-      if (!agregRefin[item.banco]) agregRefin[item.banco] = { nome:item.nome, trocoTotal:0, disponivel:false, algumMotivo:null };
-      if (item.disponivel===true && !item.naoVantajosa){ agregRefin[item.banco].disponivel = true; agregRefin[item.banco].trocoTotal += (item.troco||0); }
-      else if (!agregRefin[item.banco].algumMotivo) agregRefin[item.banco].algumMotivo = item.motivo || item.motivoTroco;
-    });
-  });
-
-  const linhas = BANCOS_EXIBIDOS.map(key=>{
-    const cfg = bancosConfig[key];
-    const ml = margemLivre.find(r=>r.banco===key);
-    const pu = agregPura[key];
-    const re = agregRefin[key];
-    return `<tr>
-      <td><b>${cfg.nome}</b></td>
-      <td class="right">${ml && ml.disponivel===true ? brl(ml.montanteLiberado) : (ml && ml.disponivel==='manual' ? '<span class="muted">confirmar taxa</span>' : '<span class="muted">indisponível</span>')}</td>
-      <td class="right">${pu && pu.disponivel ? brl(pu.novaParcelaTotal) + '/mês' : '<span class="muted">indisponível</span>'}</td>
-      <td class="right">${re && re.disponivel ? brl(re.trocoTotal) : '<span class="muted">indisponível</span>'}</td>
-    </tr>`;
-  }).join('');
-
-  document.getElementById('comparativoConteudo').innerHTML = `
-    <table class="data">
-      <thead><tr>
-        <th>Banco</th>
-        <th class="right">Margem livre (montante)</th>
-        <th class="right">Portabilidade pura (nova parcela total)</th>
-        <th class="right">Portabilidade + Refin (troco total)</th>
-      </tr></thead>
-      <tbody>${linhas}</tbody>
-    </table>
-    <p class="muted" style="margin-top:12px;">
-      Valores agregados considerando todos os contratos ativos elegíveis para portar em cada banco.
-      "Indisponível" significa que o banco não atende a idade informada, não porta a origem do contrato,
-      não atinge o acordo comercial mínimo, ou o troco/saldo mínimo não foi alcançado.
-    </p>`;
 }
 
 /* ======================= INICIALIZAÇÃO ======================= */
