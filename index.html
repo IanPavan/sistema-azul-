@@ -591,22 +591,9 @@ function calcularContrato(contrato, hoje){
     parcelasPagas = Math.max(0, Math.min(mesesDecorridos, total));
   }
   const parcelasRestantes = Math.max(0, total - parcelasPagas);
-  const taxa = numOrNull(contrato.taxaJurosMensal);
-  const parcela = numOrNull(contrato.valorParcela);
-  const emprestado = numOrNull(contrato.valorEmprestado);
-  // Saldo devedor ancorado no valor "Emprestado" do extrato, amortizado para frente pelas
-  // parcelas já pagas (Tabela Price): saldo = Emprestado×(1+i)^n − Parcela×[(1+i)^n−1]/i
-  let saldoDevedor = null;
-  if (taxa!=null && parcela!=null && emprestado!=null){
-    const i = taxa/100;
-    if (i === 0){
-      saldoDevedor = emprestado - parcela*parcelasPagas;
-    } else {
-      const fator = Math.pow(1+i, parcelasPagas);
-      saldoDevedor = emprestado*fator - parcela*(fator-1)/i;
-    }
-    saldoDevedor = Math.max(0, saldoDevedor);
-  }
+  // Saldo devedor = valor "Emprestado" do extrato, direto — sem fórmula, sem Tabela Price,
+  // sem considerar parcelas pagas. É uma cópia do dado já impresso no PDF do INSS.
+  const saldoDevedor = numOrNull(contrato.valorEmprestado);
   return { ...contrato, parcelasPagas, parcelasRestantes, saldoDevedor };
 }
 
