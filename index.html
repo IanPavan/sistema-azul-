@@ -491,6 +491,10 @@ const bancosConfig = {
 // para uso futuro, mas não aparecem como opção nas simulações.
 const BANCOS_EXIBIDOS = ['C6', 'FACTA', 'DAYCOVAL', 'BRB'];
 
+// Mínimo de parcelas pagas para permitir portabilidade — regra única para todos os bancos.
+// Substitui os números variados que existiam por banco em acordoBanco (não usados mais).
+const PARCELAS_MINIMAS_PORTABILIDADE = 12;
+
 
 /* ======================= HELPERS NUMÉRICOS / FORMATAÇÃO ======================= */
 function brl(v){
@@ -505,6 +509,15 @@ function numOrNull(v){
   if (v===null || v===undefined || v==='') return null;
   const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/\./g,'').replace(',','.'));
   return isNaN(n) ? null : n;
+}
+// Formata um número para exibir num campo <input> editável em notação brasileira (vírgula
+// decimal). Existe porque um número em JS (ex.: 36.05) vira a string "36.05" ao entrar
+// num atributo value="...", e numOrNull() (que lê esse campo de volta) espera formato BR
+// (ponto = milhar, vírgula = decimal) — sem essa formatação na exibição, "36.05" seria
+// relido como 3605. Usada em todo campo numérico editável da tela de conferência.
+function formatarNumeroParaInput(v){
+  if (v === null || v === undefined || v === '' || isNaN(v)) return '';
+  return Number(v).toLocaleString('pt-BR', {minimumFractionDigits:2, maximumFractionDigits:2});
 }
 function isNumericConfigValue(v){
   return typeof v === 'number';
@@ -966,12 +979,6 @@ function bancoCasa(nomeContrato, chaveConfig){
   const b = norm(chaveConfig);
   return a.includes(b) || b.includes(a);
 }
-function encontrarAcordo(cfgAcordoBanco, nomeContrato){
-  for (const chave of Object.keys(cfgAcordoBanco||{})){
-    if (bancoCasa(nomeContrato, chave)) return { chave, valor: cfgAcordoBanco[chave] };
-  }
-  return null;
-}
 function encontrarNaoPorta(cfgNaoPorta, nomeContrato){
   for (const item of (cfgNaoPorta||[])){
     if (bancoCasa(nomeContrato, item)) return item;
@@ -1006,11 +1013,11 @@ function avaliarBanco(bancoKey, cfg, flow, ctx){
       return { disponivel:false, motivo: `${cfg.nome} não realiza portabilidade de contratos originados no ${nomeOrigem}.` };
     }
 
-    const acordo = encontrarAcordo(cfg.acordoBanco, nomeOrigem);
-    if (acordo && typeof acordo.valor === 'number'){
-      if (contrato.parcelasPagas < acordo.valor){
-        return { disponivel:false, motivo: `${cfg.nome} exige ao menos ${acordo.valor} parcelas pagas em acordo comercial com o ${nomeOrigem} — este contrato possui apenas ${contrato.parcelasPagas}.` };
-      }
+    // Regra única e simples: qualquer contrato com 12 ou mais parcelas pagas pode ser portado
+    // (respeitada a regra de "não porta" acima); com menos de 12, não porta para banco nenhum.
+    // Os números variados por banco que existiam antes em acordoBanco não são mais usados.
+    if (contrato.parcelasPagas < PARCELAS_MINIMAS_PORTABILIDADE){
+      return { disponivel:false, motivo: `Este contrato possui apenas ${contrato.parcelasPagas} parcelas pagas — portabilidade exige no mínimo ${PARCELAS_MINIMAS_PORTABILIDADE}.` };
     }
 
     const minSaldo = resolverMinimo(cfg.saldoMinDevedor, contrato.saldoDevedor);
@@ -1251,19 +1258,19 @@ function renderConferencia(){
     const mod = mm[key] || {};
     return `<tr>
       <td>${label}</td>
-      <td><input type="text" data-mod="${key}" data-campo="margemConsignavel" value="${mod.margemConsignavel ?? ''}"></td>
-      <td><input type="text" data-mod="${key}" data-campo="margemUtilizada" value="${mod.margemUtilizada ?? ''}"></td>
-      <td><input type="text" data-mod="${key}" data-campo="margemReservada" value="${mod.margemReservada ?? ''}"></td>
-      <td><input type="text" data-mod="${key}" data-campo="margemDisponivel" value="${mod.margemDisponivel ?? ''}"></td>
-      <td><input type="text" data-mod="${key}" data-campo="margemExtrapolada" value="${mod.margemExtrapolada ?? ''}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemConsignavel" value="${formatarNumeroParaInput(mod.margemConsignavel)}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemUtilizada" value="${formatarNumeroParaInput(mod.margemUtilizada)}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemReservada" value="${formatarNumeroParaInput(mod.margemReservada)}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemDisponivel" value="${formatarNumeroParaInput(mod.margemDisponivel)}"></td>
+      <td><input type="text" data-mod="${key}" data-campo="margemExtrapolada" value="${formatarNumeroParaInput(mod.margemExtrapolada)}"></td>
     </tr>`;
   };
   const proj = margemEsperadaPorEspecie(b.especie, m.baseCalculo);
   document.getElementById('conferenciaMargem').innerHTML = `
     <div class="grid-3" style="margin-bottom:14px;">
-      <div class="field"><label>Base de cálculo</label><input type="text" id="f_baseCalculo" value="${m.baseCalculo ?? ''}"></div>
-      <div class="field"><label>Máximo de comprometimento</label><input type="text" id="f_maxComprometimento" value="${m.maximoComprometimento ?? ''}"></div>
-      <div class="field"><label>Total comprometido</label><input type="text" id="f_totalComprometido" value="${m.totalComprometido ?? ''}"></div>
+      <div class="field"><label>Base de cálculo</label><input type="text" id="f_baseCalculo" value="${formatarNumeroParaInput(m.baseCalculo)}"></div>
+      <div class="field"><label>Máximo de comprometimento</label><input type="text" id="f_maxComprometimento" value="${formatarNumeroParaInput(m.maximoComprometimento)}"></div>
+      <div class="field"><label>Total comprometido</label><input type="text" id="f_totalComprometido" value="${formatarNumeroParaInput(m.totalComprometido)}"></div>
     </div>
     <div class="banner banner-info">
       Conferência: pela espécie <b>${b.especie||'—'}</b>, a margem consignável esperada é de
@@ -1297,8 +1304,8 @@ function renderConferencia(){
       <td><input type="text" data-campo="banco" value="${c.banco||''}" style="min-width:110px;"></td>
       <td><input type="text" data-campo="dataInicioDesconto" value="${c.dataInicioDesconto||''}" style="width:100px;" placeholder="DD/MM/AAAA"></td>
       <td><input type="number" data-campo="qtdeParcelas" value="${c.qtdeParcelas||''}" style="width:70px;"></td>
-      <td><input type="text" data-campo="valorParcela" value="${c.valorParcela??''}" style="width:90px;"></td>
-      <td><input type="text" data-campo="taxaJurosMensal" value="${c.taxaJurosMensal??''}" style="width:70px;"></td>
+      <td><input type="text" data-campo="valorParcela" value="${formatarNumeroParaInput(c.valorParcela)}" style="width:90px;"></td>
+      <td><input type="text" data-campo="taxaJurosMensal" value="${formatarNumeroParaInput(c.taxaJurosMensal)}" style="width:70px;"></td>
       <td class="right">${calc.parcelasPagas}</td>
       <td class="right">${calc.parcelasRestantes}</td>
       <td class="right mono">${brl(calc.saldoDevedor)}</td>
